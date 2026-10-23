@@ -1,0 +1,135 @@
+/* The Minecraft look: dirt background, grass bar on top, grey panels, blocky buttons. */
+@font-face { font-family: "Press Start 2P"; src: url("fonts/press-start-2p.woff2"); }
+@font-face { font-family: "VT323"; src: url("fonts/vt323.woff2"); }
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+button, select, input { font: inherit; }
+
+body {
+  margin: 0;
+  padding-bottom: 16px;
+  background: #79553a url("textures/dirt.svg") 0 0 / 64px;
+  color: #3f3f3f;
+  font: 22px/1.15 "VT323", Monaco, monospace;
+}
+
+/* White text with a dark shadow, like Minecraft */
+.topbar h1, .mc-button, .status, .keys, .paused-badge, .screen-message, .view-message, .top-right {
+  color: #fff;
+  text-shadow: 2px 2px 0 #3f3f3f;
+}
+
+/* ---------- Top bar ---------- */
+.topbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  padding: 14px 20px 22px;
+  background: url("textures/grass.svg") 0 0 / 64px repeat-x, #79553a url("textures/dirt.svg") 0 0 / 64px;
+  border-bottom: 4px solid #3b2a1c;
+}
+.topbar h1 { margin: 0; color: #ffff55; font: 22px "Press Start 2P", monospace; }
+.tabs { display: flex; gap: 8px; margin: 0 auto; }
+.top-right { display: flex; align-items: center; gap: 14px; }
+
+/* ---------- Buttons and checkboxes ---------- */
+.mc-button {
+  min-height: 40px;
+  padding: 4px 16px;
+  border: 2px solid #000;
+  background: #6f6f6f;
+  box-shadow: inset 2px 2px 0 #aaa, inset -2px -3px 0 #4a4a4a;
+  font: 11px "Press Start 2P", monospace;
+  cursor: pointer;
+}
+.mc-button:hover { background: #7d88c2; }
+.mc-button[aria-pressed="true"] { background: #3f3f3f; box-shadow: inset 2px 2px 0 #1e1e1e; color: #ffff55; }   /* the picked one */
+.mc-button.small { min-height: 32px; padding: 2px 10px; font-size: 9px; }
+.pair { display: inline-flex; gap: 4px; }
+
+.mc-check { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+.mc-check input { position: absolute; opacity: 0; }   /* hide the real checkbox, draw our own square */
+.mc-check span:first-of-type { width: 20px; height: 20px; border: 2px solid #000; background: #8b8b8b; }
+.mc-check input:checked + span { background: #5d9b32; }
+
+/* ---------- The two panels ---------- */
+.stage { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; max-width: 1400px; margin: 16px auto 0; padding: 0 16px; }
+.panel {
+  padding: 12px;
+  border: 2px solid #000;
+  background: #c6c6c6;
+  box-shadow: inset 3px 3px 0 #fff, inset -3px -3px 0 #555;
+}
+.panel-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; min-height: 34px; margin-bottom: 10px; }
+.panel h2 { margin: 0; font: 12px "Press Start 2P", monospace; }
+.badge { padding: 4px 8px; background: #3f3f3f; color: #fff; font-size: 20px; }
+.badge.seeing { color: #ff7a70; }
+.badge.firing { color: #ffff55; }
+
+/* A picture sits in a dark "inventory slot" */
+.screen { position: relative; aspect-ratio: 4 / 3; overflow: hidden; background: #000; border: 3px solid; border-color: #373737 #fff #fff #373737; }
+.screen canvas, .screen video { position: absolute; inset: 0; width: 100%; height: 100%; }
+#game-canvas { cursor: crosshair; }
+#video { object-fit: cover; }
+#video.mirrored { transform: scaleX(-1); }
+.screen-message, .view-message {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 24px;
+  background: rgba(0, 0, 0, .7);
+  text-align: center;
+}
+.screen-message p { margin: 0; }
+.small-text { max-width: 420px; color: #ddd; font-size: 20px; }
+.paused-badge { position: absolute; top: 8px; right: 8px; padding: 2px 8px; background: rgba(0, 0, 0, .6); font: 10px "Press Start 2P", monospace; }
+
+/* ---------- Score table and colour key ---------- */
+.score { width: 100%; margin-top: 10px; border-collapse: collapse; }
+.score th, .score td { padding: 1px 6px; text-align: right; }
+.score th:first-child { text-align: left; padding-left: 0; }
+.score tr:first-child th { color: #555; font-weight: normal; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 10px 0 0; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+#neuron-count { margin-left: auto; color: #555; }
+.sq { width: 14px; height: 14px; border: 2px solid #000; }
+.sq.red { background: #ff5a4f; }
+.sq.white { background: #fff; }
+.sq.green { background: #6fbf4f; }
+.sq.gold { border-color: #ffff55; outline: 2px solid #000; }
+
+.status { max-width: 1400px; min-height: 28px; margin: 12px auto; padding: 0 16px; }
+
+/* ---------- Knobs ---------- */
+.controls { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 14px 24px; width: min(1368px, calc(100% - 32px)); margin: 0 auto; }
+.control { display: flex; flex-direction: column; gap: 6px; min-width: 150px; }
+.control b { font-weight: normal; color: #000; }
+.control.buttons { flex-direction: row; margin-left: auto; min-width: 0; }
+.mc-select { height: 32px; padding: 0 8px; border: 2px solid #000; border-radius: 0; background: #8b8b8b; color: #fff; }
+
+input[type="range"] { appearance: none; -webkit-appearance: none; width: 100%; height: 20px; margin: 0; border: 2px solid #000; background: #000; cursor: pointer; }
+input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 20px; background: #c6c6c6; box-shadow: inset 2px 2px 0 #fff, inset -2px -2px 0 #555; }
+input[type="range"]::-moz-range-thumb { width: 14px; height: 18px; border: 0; border-radius: 0; background: #c6c6c6; }
+
+.keys { max-width: 1400px; margin: 14px auto 0; padding: 0 16px; font-size: 20px; }
+
+/* ---------- Small screens (phones): stack things ---------- */
+@media (max-width: 900px) {
+  .stage { grid-template-columns: 1fr; }
+  .tabs { order: 3; width: 100%; margin: 0; }
+  .tabs .mc-button { flex: 1; }
+}
+@media (max-width: 520px) {
+  .topbar h1 { font-size: 16px; }
+  .tabs .mc-button { padding: 4px 6px; font-size: 9px; white-space: nowrap; }
+  .control { min-width: 0; width: 100%; }
+  .control.buttons { margin-left: 0; }
+  .keys { display: none; }
+}

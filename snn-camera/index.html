@@ -1,0 +1,135 @@
+<!doctype html>
+<!-- The SNN Camera page. Open it with "Start SNN Camera.command" (needed for YOLO and Roboflow). -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SNN Camera</title>
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- Top bar: what to look at, which brain, pause -->
+  <header class="topbar">
+    <h1>SNN CAMERA</h1>
+    <nav class="tabs">
+      <button class="mc-button tab" data-mode="game">Click the Dot</button>
+      <button class="mc-button tab" data-mode="webcam">Webcam</button>
+    </nav>
+    <div class="pair" id="brain-switch">
+      <button class="mc-button small" data-brain="snn">SNN</button>
+      <button class="mc-button small" data-brain="yolo">YOLO</button>
+      <button class="mc-button small" data-brain="roboflow">Roboflow</button>
+    </div>
+    <div class="top-right">
+      <label class="mc-check"><input type="checkbox" id="auto-switch"><span></span>Auto-switch <span id="auto-countdown"></span></label>
+      <button class="mc-button small" id="pause-button">Pause</button>
+    </div>
+  </header>
+
+  <main class="stage">
+    <!-- Left: the game or the webcam -->
+    <section class="panel">
+      <div class="panel-head">
+        <h2 id="input-title">Click the Dot</h2>
+        <div class="pair" id="player-switch">
+          <button class="mc-button small" data-player="ai" id="ai-plays">SNN plays</button>
+          <button class="mc-button small" data-player="you">You play</button>
+        </div>
+        <label class="mc-check" id="mirror-toggle"><input type="checkbox" id="mirror"><span></span>Mirror</label>
+      </div>
+      <div class="screen">
+        <canvas id="game-canvas"></canvas>
+        <video id="video" playsinline muted></video>
+        <div class="screen-message" id="camera-message">
+          <p id="camera-message-title"></p>
+          <p class="small-text" id="camera-message-body"></p>
+          <button class="mc-button" id="camera-retry">Try again</button>
+        </div>
+        <div class="paused-badge" hidden>Paused</div>
+      </div>
+      <table class="score" id="score-table">
+        <tr><th></th><th>Hits</th><th>Misses</th><th>Avg time</th></tr>
+        <tr><th id="snn-col">SNN</th><td id="snn-hits">0</td><td id="snn-misses">0</td><td id="snn-avg">-</td></tr>
+        <tr><th id="yolo-col">YOLO</th><td id="yolo-hits">0</td><td id="yolo-misses">0</td><td id="yolo-avg">-</td></tr>
+        <tr><th id="roboflow-col">Roboflow</th><td id="roboflow-hits">0</td><td id="roboflow-misses">0</td><td id="roboflow-avg">-</td></tr>
+        <tr><th>You</th><td id="you-hits">0</td><td id="you-misses">0</td><td id="you-avg">-</td></tr>
+      </table>
+    </section>
+
+    <!-- Right: what the brain sees -->
+    <section class="panel">
+      <div class="panel-head">
+        <h2 id="view-title">What the SNN sees</h2>
+        <span class="badge" id="network-chip">Quiet</span>
+      </div>
+      <div class="screen">
+        <canvas id="view-canvas"></canvas>
+        <div class="view-message" id="view-message" hidden></div>
+        <div class="paused-badge" hidden>Paused</div>
+      </div>
+      <p class="legend" id="snn-legend">
+        <span><i class="sq red"></i>changed</span>
+        <span><i class="sq white"></i>fired</span>
+        <span><i class="sq green"></i>charging</span>
+        <span id="neuron-count"></span>
+      </p>
+      <p class="legend" id="detector-legend"><span><i class="sq gold"></i>found</span><span id="detector-info"></span></p>
+    </section>
+  </main>
+
+  <p class="status" id="status"></p>
+
+  <!-- Knobs. The SNN ones hide when YOLO or Roboflow is picked, and the other way round. -->
+  <section class="panel controls">
+    <div class="control snn-only">
+      <span class="label">Reacts to</span>
+      <div class="pair" id="polarity-switch">
+        <button class="mc-button small" data-polarity="darker">Darker</button>
+        <button class="mc-button small" data-polarity="brighter">Brighter</button>
+        <button class="mc-button small" data-polarity="any">Any</button>
+      </div>
+    </div>
+    <label class="control snn-only">
+      <span class="label">Threshold <b id="threshold-out"></b></span>
+      <input type="range" id="threshold" min="0.1" max="1.5" step="0.05">
+    </label>
+    <label class="control snn-only">
+      <span class="label">Charge kept <b id="decay-out"></b></span>
+      <input type="range" id="decay" min="0" max="0.99" step="0.01">
+    </label>
+    <label class="control snn-only">
+      <span class="label">Neurons</span>
+      <select id="grid-select" class="mc-select">
+        <option value="32x24">32 x 24</option>
+        <option value="64x48">64 x 48</option>
+        <option value="128x96">128 x 96</option>
+      </select>
+    </label>
+    <label class="control detector-only">
+      <span class="label">Confidence <b id="conf-out"></b></span>
+      <input type="range" id="conf" min="0.05" max="0.9" step="0.05">
+    </label>
+    <label class="control" id="noise-control">
+      <span class="label">Screen noise <b id="noise-out"></b></span>
+      <input type="range" id="noise" min="0" max="1" step="0.05">
+    </label>
+    <label class="control" id="camera-control">
+      <span class="label">Camera</span>
+      <select id="camera-select" class="mc-select"><option value="">Default</option></select>
+    </label>
+    <div class="control buttons snn-only">
+      <button class="mc-button small" id="reset-neurons">Reset</button>
+      <button class="mc-button small" id="neuron-defaults">Defaults</button>
+    </div>
+  </section>
+
+  <footer class="keys">1 / 2 switch mode &nbsp; S / Y / B switch brain &nbsp; Space pause &nbsp; R reset</footer>
+
+  <script src="js/snn.js"></script>
+  <script src="js/game.js"></script>
+  <script src="js/yolo.js"></script>
+  <script src="js/roboflow.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
