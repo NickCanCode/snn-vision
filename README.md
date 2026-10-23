@@ -198,3 +198,15 @@ python3 tests/roboflow_smoke.py     # checks your Roboflow model answers (needs 
 - **Spike / fire**: a neuron going off (white). Its bucket then empties.
 - **Confidence**: how sure YOLO or Roboflow is about what it found (0 to 1).
 - **Neuromorphic**: computer chips built to work like brains, only doing work when something changes. (Ours runs on a normal laptop, so it still checks every square. A real neuromorphic chip wouldn't.)
+
+---
+
+## AI use (partial generative AI disclosure)
+
+Parts of this project were made with help from generative AI (Claude, by Anthropic). Here's the honest split:
+
+**What I (Nick) did:** the idea and the research direction. Comparing an SNN with YOLO, how the SNN should see (only change, leak, threshold), using Click the Dot and the Wack-a-Fly board to test it, and training the Roboflow dot model. I also did the thinking behind the project and made the decisions along the way: what to build, what to keep or cut, how it should look, and checking that it actually made sense.
+
+**What the AI helped with:** writing and cleaning up a lot of the code, especially the SNN Camera app (the browser version of the SNN, the YOLO and Roboflow hookups, the server, the Minecraft look), writing the automatic tests, and drafting this README from my explanations.
+
+The AI worked from my directions, and I reviewed and tested what it made. The SNN in the app is checked against my original Python version (`snn/snn_core.py`) to make sure it gives the same answers.
