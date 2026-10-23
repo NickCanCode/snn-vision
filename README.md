@@ -14,7 +14,7 @@ The project has two parts:
 
 ---
 
-## The big idea, in normal words
+## So whats the big deal?
 
 Imagine staring at a wall. Nothing happens. Then a fly lands on it.
 
