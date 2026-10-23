@@ -207,6 +207,6 @@ Parts of this project were made with help from generative AI (Claude, by Anthrop
 
 **What I (Nick) did:** the idea and the research direction. Comparing an SNN with YOLO, how the SNN should see (only change, leak, threshold), using Click the Dot and the Wack-a-Fly board to test it, and training the Roboflow dot model. I also did the thinking behind the project and made the decisions along the way: what to build, what to keep or cut, how it should look, and checking that it actually made sense.
 
-**What the AI helped with:** writing and cleaning up a lot of the code, especially the SNN Camera app (the browser version of the SNN, the YOLO and Roboflow hookups, the server, the Minecraft look), writing the automatic tests, and drafting this README from my explanations.
+**What the AI helped with:** writing and cleaning up a lot of the code, especially the SNN Camera app (the browser translation of the SNN logic, ensuring secure and effective YOLO and Roboflow integration, adding a 'Minecraft' inspired theme), rapidly executing the automatic tests, answering questions and explaining new concepts, and drafting this README from my notes.
 
-The AI worked from my directions, and I reviewed and tested what it made. The SNN in the app is checked against my original Python version (`snn/snn_core.py`) to make sure it gives the same answers.
+The AI worked from my directions, and I reviewed, tested, and altered what it made. The SNN in the app is checked against my original Python version (`snn/snn_core.py`) to make sure it gives the same answers.
