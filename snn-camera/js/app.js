@@ -253,6 +253,7 @@
 
   // ---------- Webcam ----------
   let stream = null, cameraState = "off", cameraTry = 0, wasQuiet = null;
+  let frameHook = null;   // our "tell me when a new webcam picture comes in" request
 
   async function startCamera() {
     if (stream) return;
@@ -288,6 +289,8 @@
     cameraTry++;
     stream?.getTracks().forEach((tr) => tr.stop());
     stream = null;
+    if (frameHook !== null) video.cancelVideoFrameCallback(frameHook);   // otherwise the next camera start would run everything twice
+    frameHook = null;
     video.srcObject = null;
     cameraState = "off";
   }
@@ -301,7 +304,7 @@
   // Runs once for every new webcam picture.
   function onVideoFrame() {
     if (!stream) return;
-    video.requestVideoFrameCallback(onVideoFrame);
+    frameHook = video.requestVideoFrameCallback(onVideoFrame);
     if (mode !== "webcam" || isPaused()) return;
     if (settings.brain !== "snn" && (!detector().ready || detector().busy || roboflowOff())) return;
 
