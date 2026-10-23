@@ -1,4 +1,4 @@
-# SNN Vision (Wack-a-Fly)
+# SNN Vision (Code Name: Wack-a-Fly)
 
 Made by **Nick** ([@NickCanCode](https://github.com/NickCanCode)) for a Neuromorphic Computing class.
 
