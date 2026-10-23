@@ -7,10 +7,9 @@ It shows two very different ways a computer can "see":
 - **SNN** (spiking neural network). Works kind of like your brain. It only notices things that **change**.
 - **YOLO**. A normal AI that looks at **the whole picture, every single time**, even if nothing happened.
 
-The project has two parts:
+This is the **SNN Vision app** (in `snn-camera/`). Watch the brains play a game called Click the Dot, or point them at your webcam.
 
-1. **The SNN Camera app** (in `snn-camera/`). Watch the brains play a game called Click the Dot, or point them at your webcam. This is the easy, fun part.
-2. **The Wack-a-Fly board stuff** (the Python files). A camera watches a board with 9 LED holes, and the brain decides which hole to hit.
+It's derived from my other project, **[Wack-a-Fly](https://github.com/NickCanCode/wack-a-fly)**, where a camera watches a board with 9 LED holes and a robot arm hits whichever one lights up. The SNN in this app is a translation of that project's Python SNN, which is kept here in `snn/snn_core.py` so the app can be checked against it.
 
 ---
 
@@ -62,7 +61,7 @@ That last row is the weird part: **once something stops moving, the SNN can't se
 
 ---
 
-## Part 1: The SNN Camera app
+## The app
 
 ### Open it
 
@@ -75,13 +74,13 @@ Double-click **`snn-camera/Start SNN Camera.command`** in Finder. It opens in it
 - **Click the Dot / Webcam** (top): what the brain looks at.
 - **SNN / YOLO / Roboflow** (top): which brain.
   - **SNN**: the change-only brain. The screen it plays depends on **Reacts to** (see below).
-  - **YOLO**: the normal "look at everything" AI (`yolo11n`, from the yoloAimPrototype1 project). It's the store-bought version, so it doesn't really know what a dot is. It thinks it's a "sports ball". Plays the original black dot on white.
-  - **Roboflow**: **your own trained** dot finder (the one `yolo_bot.py` used). It lives on Roboflow's computers on the internet, so it's the slowest. Game only.
+  - **YOLO**: the normal "look at everything" AI (`yolo11n`, from my earlier aim prototype). It's the store-bought version, so it doesn't really know what a dot is. It thinks it's a "sports ball". Plays the original black dot on white.
+  - **Roboflow**: **my own trained** dot finder (the one from my earlier aim prototype). It lives on Roboflow's computers on the internet, so it's the slowest. Game only.
 - **SNN plays / You play**: let the brain play, or play yourself and compare times.
 - **Auto-switch**: flips between game and webcam every 20 seconds (good for leaving it running at a demo table).
 - **Reacts to** (SNN only): which kind of change the neurons care about.
-  - **Darker**: a spot getting darker. You get the original game, a black dot on white. A new dot makes its spot darker, so the SNN catches it. (This is how `snn_bot.py` plays.)
-  - **Brighter**: a spot getting brighter. You get a gold dot on a dark screen. A new dot makes its spot brighter. (This is how `gui.py` watches LEDs turn on.)
+  - **Darker**: a spot getting darker. You get the original game, a black dot on white. A new dot makes its spot darker, so the SNN catches it. (This is how the Python SNN bot from Wack-a-Fly plays the real game.)
+  - **Brighter**: a spot getting brighter. You get a gold dot on a dark screen. A new dot makes its spot brighter. (This is how Wack-a-Fly watches its LEDs turn on.)
   - **Any**: both, like a real "event camera". Same dark screen. A dot leaving is a change too, so after each click the SNN ignores that spot for a moment (it knows the dot is about to vanish there). This is the webcam's setting.
 - **Threshold, Charge kept, Neurons** (SNN only): mess with the 4 steps above.
 - **Confidence** (YOLO and Roboflow only): how sure it has to be before it clicks.
@@ -121,38 +120,11 @@ ROBOFLOW_API_KEY=your_key_here
 
 ---
 
-## Part 2: The Wack-a-Fly board (Python)
-
-A camera watches a board with 9 holes, each with an LED. When an LED turns on, a brain picks the hole and the robot arm hits it. (The arm, LED board and Arduino code live in the **wack-a-fly** folder next to this one.)
-
-### Setup (once)
-
-```bash
-python3 -m venv vn
-source vn/bin/activate
-pip install -r requirements.txt
-```
-
-### Run things
-
-```bash
-python gui.py             # the Minecraft-style screen: camera + what each brain sees + score
-python camera.py          # check the 9 squares line up with the board's holes (press q to quit)
-python -m snn.snn_bot     # the SNN plays Click the Dot on your real screen (game on the left half)
-```
-
-In `gui.py` the "YOLO" side is a stand-in for now: it just picks the brightest hole.
-
----
-
 ## What every file is
 
 | File | What it does |
 |---|---|
-| `snn/snn_core.py` | The SNN brain (the 4 steps above) |
-| `snn/snn_bot.py` | Lets the SNN play Click the Dot with your real mouse |
-| `camera.py` | Cuts the board camera into 9 little pictures, one per hole |
-| `gui.py` | The Wack-a-Fly screen |
+| `snn/snn_core.py` | The original Python SNN from Wack-a-Fly (the 4 steps above). The app's SNN is checked against it |
 | `snn-camera/Start SNN Camera.command` | Double-click to open the app |
 | `snn-camera/server.py` | The app's little server. Hands out the app and talks to Roboflow (keeps your key secret) |
 | `snn-camera/index.html`, `styles.css` | The app's page and Minecraft look |
@@ -161,7 +133,7 @@ In `gui.py` the "YOLO" side is a stand-in for now: it just picks the brightest h
 | `snn-camera/js/roboflow.js` | Sends pictures to Roboflow (through `server.py`) |
 | `snn-camera/js/game.js` | Click the Dot |
 | `snn-camera/js/app.js` | Runs everything: the game, the webcam, the drawing, the buttons |
-| `snn-camera/models/yolo11n.onnx` | The YOLO model file (made from `yolo11n.pt` in yoloAimPrototype1) |
+| `snn-camera/models/yolo11n.onnx` | The YOLO model file (made from `yolo11n.pt`) |
 | `snn-camera/vendor/` | The engine that runs YOLO in the browser (onnxruntime, free to use) |
 | `snn-camera/fonts/`, `textures/`, `icons/` | Pixel fonts, dirt and grass pictures, the app icon |
 | `snn-camera/tests/` | Automatic checks (see below) |
@@ -182,7 +154,7 @@ python3 tests/roboflow_smoke.py     # checks your Roboflow model answers (needs 
 - **YOLO or Roboflow says "needs the launcher".** You opened `index.html` directly. Use `Start SNN Camera.command` instead.
 - **Roboflow says "No Roboflow key".** Put your key in `snn-camera/.env` (see above) and restart the launcher.
 - **Webcam says it's blocked.** Click the camera icon in the address bar and allow it. Also check System Settings > Privacy & Security > Camera.
-- **Webcam says it's busy.** Another app is using it (Zoom, FaceTime, `python camera.py`). Close that.
+- **Webcam says it's busy.** Another app is using it (Zoom, FaceTime, ...). Close that.
 
 ---
 
