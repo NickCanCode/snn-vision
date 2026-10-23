@@ -71,7 +71,7 @@ Double-click **`snn-camera/Start SNN Camera.command`** in Finder. It opens in it
 
 ### The buttons
 
-- **Click the Dot / Webcam** (top): what the brain looks at.
+- **Click the Dot / Webcam / Board** (top): what the brain looks at. Board = the real Wack-a-Fly board (see **Physical demo** below).
 - **SNN / YOLO / Roboflow** (top): which brain.
   - **SNN**: the change-only brain. The screen it plays depends on **Reacts to** (see below).
   - **YOLO**: the normal "look at everything" AI (`yolo11n`, from my earlier aim prototype). It's the store-bought version, so it doesn't really know what a dot is. It thinks it's a "sports ball". Plays the original black dot on white.
@@ -86,7 +86,7 @@ Double-click **`snn-camera/Start SNN Camera.command`** in Finder. It opens in it
 - **Confidence** (YOLO and Roboflow only): how sure it has to be before it clicks.
 - **Screen noise**: adds flickery specks to the game.
 
-Keys: `1` / `2` game or webcam, `S` / `Y` / `B` pick a brain, `Space` pause, `R` reset.
+Keys: `1` / `2` / `3` game, webcam or board, `S` / `Y` / `B` / `F` pick a brain, `Space` pause, `R` reset.
 
 ### What you'll see
 
@@ -120,6 +120,47 @@ ROBOFLOW_API_KEY=your_key_here
 
 ---
 
+## Physical demo (the real board + arm)
+
+The **Board** tab plays Wack-a-Fly for real: a hole on the board lights up, the brain spots it through a camera, and the robot arm goes to that hole.
+
+### How the brain sees the board
+
+1. The camera picture gets **chopped into 9 squares**, one around each light.
+2. Each square gets **zoomed in** and turned **black and white** (only the bright LED stays white).
+3. The 9 squares get glued into one **3 x 3 picture** (that's what you see on the right).
+4. Whichever square the white light dot is in = the hole to hit.
+
+Two brains can play:
+
+- **SNN**: only reacts when a light turns **on** (a square suddenly gets brighter). A light that stays on is old news.
+- **Frame-based** (stands in for YOLO): checks **all 9 squares, every single frame**, and picks the one that's clearly whitest.
+
+**You play**: a hole lights up, you move the magnet to it, and the sensor under that hole times you. Wrong hole = miss.
+
+### What you need
+
+| Thing | Sketch to upload (Arduino IDE) |
+|---|---|
+| Board Arduino: 9 LEDs on pins 2 to 10 | `arduino/board/board.ino` from the [wack-a-fly](https://github.com/NickCanCode/wack-a-fly) project |
+| Arm Arduino: base servo on pin 11, arm servo on pin 12, magnet on the tip | `arduino/arm/arm.ino` from the wack-a-fly project |
+| Sensor Arduino: 9 hall sensors (on/off kind), one under each hole, on pins 2 to 10 | `arduino/sensors/sensors.ino` from **this** project |
+| A camera pointed at the board | (none) |
+
+Plug all three Arduinos into the computer with USB. If your sensors are on different pins, change the list at the top of `sensors.ino`.
+
+**It only works in Chrome**, opened with `Start SNN Camera.command` (Chrome is the browser that's allowed to talk to Arduinos).
+
+### First time with the real board
+
+1. Open the app, press the **Board** tab, then **Camera**.
+2. Press **Board**, **Arm** and **Sensors** under "Arduinos". Each time Chrome shows a list: pick that Arduino. (They light up gold when connected.)
+3. Press **Set holes**, then click the middle of each hole on the camera picture, in order: 0 1 2 across the top row, then 3 4 5, then 6 7 8.
+4. Test the arm: if it doesn't land on the right holes, change its angles in `snn-camera/js/hardware.js` (the `PRESETS` list at the top, one `[base, arm]` pair per hole), save, and reload the page.
+5. Pick **SNN** or **Frame-based** (or **You play**) and press **Start**.
+
+No hardware with you? Pick **Simulator** instead of Camera: it draws a pretend board with a pretend arm, so the whole game still works. In You play, click the lit hole to "move the magnet" there.
+
 ## What every file is
 
 | File | What it does |
@@ -132,7 +173,10 @@ ROBOFLOW_API_KEY=your_key_here
 | `snn-camera/js/yolo.js` | Runs YOLO in the browser |
 | `snn-camera/js/roboflow.js` | Sends pictures to Roboflow (through `server.py`) |
 | `snn-camera/js/game.js` | Click the Dot |
-| `snn-camera/js/app.js` | Runs everything: the game, the webcam, the drawing, the buttons |
+| `snn-camera/js/board.js` | The physical board: chopping the picture into 9 squares, the two board brains, the simulator, the game rounds |
+| `snn-camera/js/hardware.js` | Talks to the 3 Arduinos over USB (and the arm's angle for each hole) |
+| `arduino/sensors/sensors.ino` | The sensor Arduino: tells the computer which hole the magnet touched |
+| `snn-camera/js/app.js` | Runs everything: the game, the webcam, the board, the drawing, the buttons |
 | `snn-camera/models/yolo11n.onnx` | The YOLO model file (made from `yolo11n.pt`) |
 | `snn-camera/vendor/` | The engine that runs YOLO in the browser (onnxruntime, free to use) |
 | `snn-camera/fonts/`, `textures/`, `icons/` | Pixel fonts, dirt and grass pictures, the app icon |

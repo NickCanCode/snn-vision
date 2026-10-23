@@ -15,11 +15,13 @@
     <nav class="tabs">
       <button class="mc-button tab" data-mode="game">Click the Dot</button>
       <button class="mc-button tab" data-mode="webcam">Webcam</button>
+      <button class="mc-button tab" data-mode="board">Board</button>
     </nav>
     <div class="pair" id="brain-switch">
       <button class="mc-button small" data-brain="snn">SNN</button>
       <button class="mc-button small" data-brain="yolo">YOLO</button>
       <button class="mc-button small" data-brain="roboflow">Roboflow</button>
+      <button class="mc-button small" data-brain="frame">Frame-based</button>
     </div>
     <div class="top-right">
       <label class="mc-check"><input type="checkbox" id="auto-switch"><span></span>Auto-switch <span id="auto-countdown"></span></label>
@@ -53,6 +55,7 @@
         <tr><th id="snn-col">SNN</th><td id="snn-hits">0</td><td id="snn-misses">0</td><td id="snn-avg">-</td></tr>
         <tr><th id="yolo-col">YOLO</th><td id="yolo-hits">0</td><td id="yolo-misses">0</td><td id="yolo-avg">-</td></tr>
         <tr><th id="roboflow-col">Roboflow</th><td id="roboflow-hits">0</td><td id="roboflow-misses">0</td><td id="roboflow-avg">-</td></tr>
+        <tr><th id="frame-col">Frame-based</th><td id="frame-hits">0</td><td id="frame-misses">0</td><td id="frame-avg">-</td></tr>
         <tr><th>You</th><td id="you-hits">0</td><td id="you-misses">0</td><td id="you-avg">-</td></tr>
       </table>
     </section>
@@ -82,6 +85,30 @@
 
   <!-- Knobs. The SNN ones hide when YOLO or Roboflow is picked, and the other way round. -->
   <section class="panel controls">
+    <!-- Board mode only: the real Wack-a-Fly board -->
+    <div class="control board-only">
+      <span class="label">Board from</span>
+      <div class="pair" id="board-input">
+        <button class="mc-button small" data-input="sim">Simulator</button>
+        <button class="mc-button small" data-input="camera">Camera</button>
+      </div>
+    </div>
+    <div class="control board-only" id="arduino-control">
+      <span class="label">Arduinos</span>
+      <div class="pair">
+        <button class="mc-button small" id="connect-board">Board</button>
+        <button class="mc-button small" id="connect-arm">Arm</button>
+        <button class="mc-button small" id="connect-sensors">Sensors</button>
+      </div>
+    </div>
+    <div class="control board-only">
+      <span class="label">Arm</span>
+      <label class="mc-check"><input type="checkbox" id="use-arm"><span></span>Use arm</label>
+    </div>
+    <div class="control board-only buttons">
+      <button class="mc-button small" id="board-start">Start</button>
+      <button class="mc-button small" id="set-holes">Set holes</button>
+    </div>
     <div class="control snn-only">
       <span class="label">Reacts to</span>
       <div class="pair" id="polarity-switch">
@@ -124,12 +151,14 @@
     </div>
   </section>
 
-  <footer class="keys">1 / 2 switch mode &nbsp; S / Y / B switch brain &nbsp; Space pause &nbsp; R reset</footer>
+  <footer class="keys">1 / 2 / 3 switch mode &nbsp; S / Y / B / F switch brain &nbsp; Space pause &nbsp; R reset</footer>
 
   <script src="js/snn.js"></script>
   <script src="js/game.js"></script>
   <script src="js/yolo.js"></script>
   <script src="js/roboflow.js"></script>
+  <script src="js/board.js"></script>
+  <script src="js/hardware.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>
