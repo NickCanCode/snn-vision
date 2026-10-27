@@ -147,7 +147,7 @@
 
   // ---------- Click the Dot ----------
   const game = new ClickTheDotGame.ClickTheDot({ width: W, height: H });
-  const score = Object.fromEntries(["snn", "yolo", "roboflow", "frame", "you"].map((k) => [k, { hits: 0, misses: 0, totalMs: 0 }]));
+  const score = Object.fromEntries(["snn", "yolo", "roboflow", "frame", "you"].map((k) => [k, { hits: 0, misses: 0, totalMs: 0, touches: 0, touchMs: 0 }]));
   let effects = [], nextLook = 0, watchedDot = { id: 0, ms: 0 };
   let ink = COLORS.dark;
 
@@ -252,20 +252,23 @@
       setText(`#${who}-hits`, String(s.hits));
       setText(`#${who}-misses`, String(s.misses));
       setText(`#${who}-avg`, s.hits ? ms(s.totalMs / s.hits) : "-");
+      setText(`#${who}-touch`, s.touches ? ms(s.touchMs / s.touches) : "-");
     }
   }
 
   // ---------- The real Wack-a-Fly board (Board mode) ----------
   const vision = new Board.Vision();
   const holes = () => settings.holes || Board.HOLES;
-  const links = { board: new Hardware.Link(), arm: new Hardware.Link(), sensors: new Hardware.Link() };
+  const links = { board: new Hardware.Link(), arm: new Hardware.Link() };
   const simBoard = new Hardware.SimBoard(), simArm = new Hardware.SimArm();
   const usingSim = () => settings.boardInput === "sim";
   let match = null;          // the game being played on the board, if any
   let boardGuess = null;     // the last hole the brain picked, for drawing
   let newHoles = null;       // while "Set holes" is waiting for clicks
 
-  new Hardware.RealSensors(links.sensors, (hole) => match?.felt(hole));   // a sensor felt the magnet
+  // The arm's tip touched a magnet (the real one says "T", the pretend one just calls this).
+  links.arm.onLine((line) => { if (Hardware.isTouch(line)) match?.touched(); });
+  simArm.onTouch = () => match?.touched();
 
   // Turn the board picture into the 3 x 3 black-and-white grid, and let the brain look at it.
   function boardLook(t) {
@@ -303,9 +306,11 @@
     refresh();
   }
 
-  function record(who, hit, time) {
+  // seeMs = light on -> brain picked it. touchMs = light on -> the arm's tip touched it (null without an arm).
+  function record(who, hit, seeMs, touchMs) {
     const s = score[who];
-    if (hit) { s.hits++; s.totalMs += time; } else s.misses++;
+    if (hit) { s.hits++; s.totalMs += seeMs; } else s.misses++;
+    if (touchMs !== null) { s.touches++; s.touchMs += touchMs; }
     showScore();
   }
 
@@ -315,15 +320,23 @@
       return refresh();
     }
     const who = settings.player === "you" ? "you" : settings.boardBrain;
-    let devices;
-    if (usingSim()) {
-      devices = { board: simBoard, arm: settings.useArm ? simArm : null };
-    } else {
+    if (!usingSim()) {
       if (!links.board.connected) return status("Connect the board Arduino first (or switch to Simulator).");
-      if (who === "you" && !links.sensors.connected) return status("You play needs the sensor Arduino (or use the Simulator and click the holes).");
-      if (who !== "you" && cameraState !== "on") return status("The camera isn't on yet.");
-      devices = { board: new Hardware.RealBoard(links.board), arm: settings.useArm && links.arm.connected ? new Hardware.RealArm(links.arm) : null };
+      if (who === "you") return status("You play is in the Simulator: click the lit hole.");
+      if (cameraState !== "on") return status("The camera isn't on yet.");
     }
+    // The computer runs the game. The board on screen and the real one (if plugged in) both show it.
+    const realBoard = new Hardware.RealBoard(links.board), realArm = new Hardware.RealArm(links.arm);
+    const board = {
+      light(hole) { simBoard.light(hole); if (links.board.connected) realBoard.light(hole); },
+      off() { simBoard.off(); if (links.board.connected) realBoard.off(); },
+    };
+    // The real arm if it's plugged in (the screen shows where it went), otherwise the pretend one.
+    const arm = !settings.useArm ? null : !links.arm.connected ? simArm : {
+      goTo(hole) { simArm.at = hole; return realArm.goTo(hole); },
+      home() { simArm.at = null; return realArm.home(); },
+    };
+    const devices = { board, arm };
     resetBrain();
     match = new Board.Match({ now, onChange: status });
     match.play(who, devices, record).then(() => { match = null; refresh(); });
@@ -342,16 +355,58 @@
     refresh();
   }
 
+  // A pointer event -> where it is in the 640 x 480 picture.
+  function boardPoint(e) {
+    const r = gameCanvas.getBoundingClientRect();
+    return [(e.clientX - r.left) / r.width * W, (e.clientY - r.top) / r.height * H];
+  }
+
+  // Which hole's box is under this point (or -1).
+  const boxAt = (x, y) => holes().findIndex(([hx, hy]) => Math.abs(hx - x) <= Board.BOX / 2 && Math.abs(hy - y) <= Board.BOX / 2);
+
+  let dragging = null;   // {hole, dx, dy} while a box is being dragged
+
   function boardClick(e) {
     if (mode !== "board") return;
-    const r = gameCanvas.getBoundingClientRect();
-    const x = (e.clientX - r.left) / r.width * W, y = (e.clientY - r.top) / r.height * H;
+    const [x, y] = boardPoint(e);
     if (newHoles) return setHolesClick(x, y);
     // Simulator + You play: clicking a hole = moving the magnet onto it.
     if (usingSim() && match && settings.player === "you") {
       const near = holes().findIndex(([hx, hy]) => Math.hypot(hx - x, hy - y) < 40);
       if (near >= 0) match.felt(near);
+      return;
     }
+    // Otherwise, grab a box to drag it onto its hole.
+    const hole = boxAt(x, y);
+    if (hole < 0) return;
+    settings.holes = holes().map(([hx, hy]) => [hx, hy]);   // our own copy, so the defaults stay as they are
+    const [hx, hy] = settings.holes[hole];
+    dragging = { hole, dx: hx - x, dy: hy - y };
+    gameCanvas.setPointerCapture(e.pointerId);
+    gameCanvas.style.cursor = "grabbing";
+  }
+
+  function boardDrag(e) {
+    if (mode !== "board") return;
+    const [x, y] = boardPoint(e);
+    if (!dragging) {   // just hovering: show a hand over the boxes
+      gameCanvas.style.cursor = !newHoles && !(usingSim() && match && settings.player === "you") && boxAt(x, y) >= 0 ? "grab" : "";
+      return;
+    }
+    const half = Board.BOX / 2;
+    settings.holes[dragging.hole] = [
+      Math.round(Math.min(W - half, Math.max(half, x + dragging.dx))),
+      Math.round(Math.min(H - half, Math.max(half, y + dragging.dy))),
+    ];
+  }
+
+  function boardDrop() {
+    if (!dragging) return;
+    status(`Hole ${dragging.hole} moved.`);
+    dragging = null;
+    gameCanvas.style.cursor = "grab";
+    save();
+    resetBrain();   // the SNN saw the box slide around, so start it fresh
   }
 
   // ---------- Webcam ----------
@@ -519,14 +574,14 @@
     video.classList.toggle("mirrored", settings.mirror);
     for (const [sel, show] of [["#player-switch", !isWebcam()], ["#score-table", !isWebcam()], ["#noise-control", isGame],
       ["#mirror-toggle", isWebcam()], ["#camera-control", wantsCamera()], ["#snn-legend", isSnn], ["#detector-legend", !isSnn],
-      ["#arduino-control", isBoard && !usingSim()]]) $(sel).hidden = !show;
+      ["#arduino-control", isBoard]]) $(sel).hidden = !show;
     $$(".snn-only").forEach((c) => (c.hidden = !isSnn));
     $$(".detector-only").forEach((c) => (c.hidden = isSnn || isBoard));
-    $$(".board-only").forEach((c) => (c.hidden = !isBoard || c.id === "arduino-control" && usingSim()));
+    $$(".board-only").forEach((c) => (c.hidden = !isBoard));
     $("#polarity-switch").parentElement.hidden = !isSnn || isBoard;   // the board always uses "brighter"
     for (const row of ["yolo", "roboflow"]) $(`#${row}-col`).parentElement.hidden = isBoard;
     $("#frame-col").parentElement.hidden = !isBoard;
-    for (const name of ["board", "arm", "sensors"]) $(`#connect-${name}`).setAttribute("aria-pressed", String(links[name].connected));
+    for (const name of ["board", "arm"]) $(`#connect-${name}`).setAttribute("aria-pressed", String(links[name].connected));
     $("#use-arm").checked = settings.useArm;
     setText("#board-start", !match ? "Start" : match.running ? "Stop" : "Stopping...");
     setText("#set-holes", newHoles ? "Setting..." : "Set holes");
@@ -782,13 +837,16 @@
   $("#camera-select").addEventListener("change", (e) => change(() => { settings.cameraId = e.target.value; stopCamera(); startCamera(); }));
   gameCanvas.addEventListener("pointerdown", youClick);
   gameCanvas.addEventListener("pointerdown", boardClick);
+  gameCanvas.addEventListener("pointermove", boardDrag);
+  gameCanvas.addEventListener("pointerup", boardDrop);
+  gameCanvas.addEventListener("pointercancel", boardDrop);
   onClick("#board-input", (d) => change(() => {
     match?.stop();
     settings.boardInput = d.input;
     if (wantsCamera()) startCamera(); else stopCamera();
     resetBrain();
   }));
-  for (const name of ["board", "arm", "sensors"]) $(`#connect-${name}`).addEventListener("click", () => connect(name));
+  for (const name of ["board", "arm"]) $(`#connect-${name}`).addEventListener("click", () => connect(name));
   $("#use-arm").addEventListener("change", (e) => change(() => (settings.useArm = e.target.checked)));
   $("#board-start").addEventListener("click", startOrStop);
   $("#set-holes").addEventListener("click", () => {

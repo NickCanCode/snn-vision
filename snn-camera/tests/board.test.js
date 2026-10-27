@@ -1,8 +1,8 @@
 // Checks the board brains and the Arduino messages. Run:  node --test tests/*.test.js
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { squareOf, frameGuess, GRID, SIZE } = require("../js/board.js");
-const { armCommand, sensorHole, PRESETS } = require("../js/hardware.js");
+const { squareOf, frameGuess, GRID, SIZE, Match } = require("../js/board.js");
+const { armCommand, isTouch, PRESETS } = require("../js/hardware.js");
 const { SpikingGrid } = require("../js/snn.js");
 
 // A black 3 x 3 board picture with a white dot (a lit LED) in one square.
@@ -35,11 +35,44 @@ test("SNN on the board: fires when a light turns ON in a square, not while it st
   assert.equal(brain.step(boardPicture(7), GRID, GRID), null, "a light that stays on is old news");
 });
 
-test("Arduino messages: arm moves and sensor reports", () => {
+test("Arduino messages: arm moves and the tip touches", () => {
   assert.equal(armCommand(55, 40), "M55,40\n");
   assert.equal(PRESETS.length, 9);
-  assert.equal(sensorHole("H4"), 4);
-  assert.equal(sensorHole("H4\r"), 4);
-  assert.equal(sensorHole("OK"), null);
-  assert.equal(sensorHole("H9"), null);
+  assert.equal(isTouch("T"), true);
+  assert.equal(isTouch("T\r"), true);
+  assert.equal(isTouch("OK"), false);
+});
+
+// One round with a pretend board and arm: light -> brain sees it -> arm goes there -> tip touches -> light off.
+async function playOneRound(armGoesTo) {
+  const lights = [];
+  const board = { light: (h) => lights.push(h), off: () => lights.push("off") };
+  const match = new Match({ now: () => performance.now(), onChange: () => {} });
+  const arm = {
+    async goTo(hole) { arm.went = hole; match.touched(); },   // every hole has a magnet, so it always touches
+    async home() { match.stop(); },
+  };
+  let scored;
+  const playing = match.play("snn", { board, arm }, (...args) => (scored = args));
+  while (match.lit === null) await new Promise((r) => setTimeout(r, 10));
+  const lit = match.lit;
+  match.saw(armGoesTo(lit));
+  await playing;
+  return { lit, lights, went: arm.went, scored };
+}
+
+test("a round: the arm goes to the hole the brain saw, and the touch turns the light off", async () => {
+  const { lit, lights, went, scored } = await playOneRound((lit) => lit);
+  assert.equal(went, lit);
+  assert.deepEqual(lights.slice(0, 3), ["off", lit, "off"], "light on, then off when the tip touched");
+  const [who, hit, seeMs, touchMs] = scored;
+  assert.equal(who, "snn");
+  assert.equal(hit, true);
+  assert.ok(touchMs >= seeMs, "the touch comes after seeing it");
+});
+
+test("a round: the arm went to the wrong hole = miss, even though it touched", async () => {
+  const { lit, went, scored } = await playOneRound((lit) => (lit + 1) % 9);
+  assert.notEqual(went, lit);
+  assert.equal(scored[1], false);
 });

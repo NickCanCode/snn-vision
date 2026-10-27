@@ -97,7 +97,8 @@
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-  // One game on the board. The app tells it what the brain sees (saw) and what the sensors feel (felt).
+  // One game on the board. The computer runs the game, and the board (screen and real) just shows it.
+  // A round: light a hole -> the brain spots it -> the arm goes to that hole -> the tip touches the magnet -> light off.
   class Match {
     constructor({ now, onChange }) {
       this.now = now;   // the app's clock (it stops while paused, so the game pauses too)
@@ -105,6 +106,8 @@
       this.running = false;
       this.lit = null;            // which hole is lit right now (null = board dark)
       this.result = null;         // {hole, guess, hit, at} of the last round, for drawing
+      this.touchAt = null;        // when the arm's tip touched a magnet this round
+      this.armMoving = false;     // only touches while the arm is on its way count
     }
 
     async wait(ms) {   // like sleep, but the clock stops while the app is paused
@@ -117,9 +120,16 @@
       if (this.who !== "you" && this.lit !== null && this.answer === undefined && hole !== null) this.answer = { hole, at: this.now() };
     }
 
-    // A sensor felt the magnet in this hole. Only counts when YOU are playing (the arm's touch isn't scored).
+    // You clicked a hole in the simulator. Only counts when YOU are playing.
     felt(hole) {
       if (this.who === "you" && this.lit !== null && this.answer === undefined) this.answer = { hole, at: this.now() };
+    }
+
+    // The arm's tip touched a magnet: that's the confirmation, so the light goes off right away.
+    touched() {
+      if (!this.armMoving || this.touchAt !== null) return;
+      this.touchAt = this.now();
+      this.board.off();
     }
 
     stop() {
@@ -127,9 +137,12 @@
     }
 
     // Play rounds until stopped. who: "snn", "frame" or "you". devices: {board, arm} (arm can be null).
+    // record(who, hit, seeMs, touchMs) gets called once per round (touchMs is null without an arm).
     async play(who, devices, record) {
       this.running = true;
       this.who = who;
+      this.board = devices.board;
+      const arm = who === "you" ? null : devices.arm;   // when you play, you are the arm
       const timeout = who === "you" ? 5000 : 3000;   // people need longer than brains
       try {
         while (this.running) {
@@ -138,35 +151,53 @@
           await this.wait(1000);   // keep the board dark for a moment, so the SNN sees the light turn ON
           if (!this.running) break;
 
+          // 1. Light a hole.
           const hole = Math.floor(Math.random() * 9);
           this.answer = undefined;
+          this.touchAt = null;
           devices.board.light(hole);
           this.lit = hole;
           const litAt = this.now();
-          this.onChange(who === "you" ? `Hole ${hole} is lit. Move the magnet there!` : `Hole ${hole} is lit...`);
+          this.onChange(who === "you" ? `Hole ${hole} is lit. Click it!` : `Hole ${hole} is lit...`);
 
-          // Wait for an answer, or give up after the timeout.
+          // 2. Wait for the brain (or you) to pick a hole, or give up after the timeout.
           while (this.running && this.answer === undefined && this.now() - litAt < timeout) await sleep(10);
           if (!this.running) break;
           const answer = this.answer ?? null;
-          const hit = answer?.hole === hole;
-          const time = answer ? answer.at - litAt : null;
-          this.result = { hole, guess: answer?.hole ?? null, hit, at: this.now() };
-          record(who, hit, time);
-          this.onChange(answer === null
-            ? `Hole ${hole} was lit, but nothing ${who === "you" ? "touched it" : "was seen"}. Miss.`
-            : `Hole ${hole} was lit · ${who === "you" ? "you touched" : "picked"} ${answer.hole} in ${Math.round(time)} ms · ${hit ? "HIT" : "MISS"}`);
+          const see = answer ? answer.at - litAt : null;
 
-          // The arm goes wherever the brain picked (right or wrong), then back home.
-          if (devices.arm && who !== "you" && answer && this.running) {
-            await devices.arm.goTo(answer.hole);
-            await devices.arm.home();
+          // 3. Send the arm to the picked hole (right or wrong) and wait for the tip to touch the magnet.
+          let touch = null;
+          if (arm && answer) {
+            this.armMoving = true;
+            this.onChange(`Hole ${hole} is lit · picked ${answer.hole} in ${Math.round(see)} ms · arm on its way...`);
+            await arm.goTo(answer.hole);
+            const end = this.now() + 1000;   // give the tip a moment to touch after the arm gets there
+            while (this.running && this.touchAt === null && this.now() < end) await sleep(10);
+            this.armMoving = false;
+            if (!this.running) break;
+            if (this.touchAt !== null) touch = this.touchAt - litAt;
           }
+
+          // 4. Score it. With an arm, it only counts if the tip really touched.
+          const hit = answer?.hole === hole && (!arm || touch !== null);
+          this.result = { hole, guess: answer?.hole ?? null, hit, at: this.now() };
+          record(who, hit, hit ? see : null, hit ? touch : null);
+          devices.board.off();
+          this.lit = null;
+          this.onChange(answer === null
+            ? `Hole ${hole} was lit, but nothing ${who === "you" ? "clicked it" : "was seen"}. Miss.`
+            : `Hole ${hole} was lit · picked ${answer.hole} in ${Math.round(see)} ms`
+              + (arm ? (touch !== null ? ` · touched in ${Math.round(touch)} ms` : " · the arm never touched") : "")
+              + ` · ${hit ? "HIT" : "MISS"}`);
+
+          if (arm && answer && this.running) await arm.home();
         }
       } catch (err) {
         this.onChange(`Stopped: ${err.message}`);
       } finally {
         this.running = false;
+        this.armMoving = false;
         this.lit = null;
         try { devices.board.off(); } catch { /* board already gone */ }
       }

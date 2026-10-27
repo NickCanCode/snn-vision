@@ -1,7 +1,6 @@
-// Talks to the 3 Arduinos over USB, right from Chrome (no Python needed).
-//   Board Arduino   (arduino/board/board.ino in the wack-a-fly project): lights the LEDs
-//   Arm Arduino     (arduino/arm/arm.ino in the wack-a-fly project): 2 servos with a magnet on the tip
-//   Sensor Arduino  (arduino/sensors/sensors.ino in this project): 9 hall sensors, one under each hole
+// Talks to the 2 Arduinos over USB, right from Chrome (no Python needed).
+//   Board Arduino  (arduino/board/board.ino): lights the LEDs. There's a magnet inside each hole.
+//   Arm Arduino    (arduino/arm/arm.ino): 2 servos, and a hall sensor on the tip that says "T" when it touches a magnet
 // Only works in Chrome, opened with "Start SNN Camera.command".
 (function () {
   "use strict";
@@ -17,7 +16,7 @@
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const armCommand = (base, arm) => `M${base},${arm}\n`;          // what arm.ino understands
-  const sensorHole = (line) => (/^H([0-8])$/.exec(line.trim()) ? Number(line.trim()[1]) : null);   // "H4" -> 4
+  const isTouch = (line) => line.trim() === "T";                   // the arm's tip just touched a magnet
 
   // One USB connection to one Arduino.
   class Link {
@@ -47,11 +46,16 @@
 
     onLine(fn) { this.listeners.push(fn); }
 
-    // Wait for the next line the Arduino sends (or give up).
-    nextLine(timeoutMs) {
+    // Wait for the Arduino to send this exact line (or give up). Other lines (like "T") are skipped.
+    waitFor(text, timeoutMs) {
       return new Promise((resolve, reject) => {
         const timer = setTimeout(() => { this.listeners = this.listeners.filter((f) => f !== once); reject(new Error("The Arduino didn't answer")); }, timeoutMs);
-        const once = (line) => { clearTimeout(timer); this.listeners = this.listeners.filter((f) => f !== once); resolve(line); };
+        const once = (line) => {
+          if (line !== text) return;
+          clearTimeout(timer);
+          this.listeners = this.listeners.filter((f) => f !== once);
+          resolve();
+        };
         this.listeners.push(once);
       });
     }
@@ -87,16 +91,12 @@
   class RealArm {
     constructor(link) { this.link = link; }
     async move([base, arm]) {
-      const answer = this.link.nextLine(10000);
+      const there = this.link.waitFor("OK", 10000);   // arm.ino says "OK" once it's there
       await this.link.write(armCommand(base, arm));
-      if ((await answer) !== "OK") throw new Error("The arm gave a strange answer");
+      await there;
     }
     goTo(hole) { return this.move(PRESETS[hole]); }
     home() { return this.move(HOME); }
-  }
-
-  class RealSensors {
-    constructor(link, onTouch) { link.onLine((line) => { const h = sensorHole(line); if (h !== null) onTouch(h); }); }
   }
 
   // Pretend versions for the simulator.
@@ -107,12 +107,12 @@
   }
 
   class SimArm {
-    constructor() { this.at = null; }
-    async goTo(hole) { this.at = hole; await sleep(600); }   // pretend it takes a moment to swing over
+    constructor() { this.at = null; this.onTouch = () => {}; }
+    async goTo(hole) { this.at = hole; await sleep(600); this.onTouch(); }   // swing over, then the tip touches the magnet
     async home() { this.at = null; await sleep(400); }
   }
 
-  const api = { PRESETS, HOME, armCommand, sensorHole, Link, RealBoard, RealArm, RealSensors, SimBoard, SimArm };
+  const api = { PRESETS, HOME, armCommand, isTouch, Link, RealBoard, RealArm, SimBoard, SimArm };
   if (typeof module === "object") module.exports = api;   // so the tests can use it
   else window.Hardware = api;
 })();

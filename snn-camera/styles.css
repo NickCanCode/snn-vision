@@ -71,7 +71,7 @@ body {
 /* A picture sits in a dark "inventory slot" */
 .screen { position: relative; aspect-ratio: 4 / 3; overflow: hidden; background: #000; border: 3px solid; border-color: #373737 #fff #fff #373737; }
 .screen canvas, .screen video { position: absolute; inset: 0; width: 100%; height: 100%; }
-#game-canvas { cursor: crosshair; }
+#game-canvas { cursor: crosshair; touch-action: none; }   /* so dragging a hole box doesn't scroll the page on a touch screen */
 #video { object-fit: cover; }
 #video.mirrored { transform: scaleX(-1); }
 .screen-message, .view-message {
