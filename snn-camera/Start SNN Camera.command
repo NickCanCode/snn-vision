@@ -32,7 +32,9 @@ fi
 # Something else using the port (like an old copy)? Use the next free one.
 while lsof -iTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1; do PORT=$((PORT + 1)); done
 
-python3 server.py "$PORT" &
+PYTHON=python3
+[ -x .venv/bin/python ] && PYTHON=.venv/bin/python   # the app's own venv (has Roboflow's package), if you made one
+"$PYTHON" server.py "$PORT" &
 SERVER=$!
 trap 'kill "$SERVER" 2>/dev/null' EXIT
 for _ in $(seq 1 50); do   # wait (up to 5 seconds) for the server to wake up

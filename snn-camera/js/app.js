@@ -1,5 +1,5 @@
 // The app: runs the game or the webcam, feeds every frame to the picked brain, and draws everything.
-//   Brains: SNN (only sees change), YOLO (sees everything, every frame), Roboflow (your trained dot model)
+//   Brains: SNN (only sees change), YOLO (sees everything, every frame). Board mode adds Frame-based and Roboflow (your board model).
 //   Things to look at: Click the Dot, your webcam, or the real Wack-a-Fly board (Board mode)
 (() => {
   "use strict";
@@ -12,7 +12,7 @@
   const NAME = { snn: "SNN", yolo: "YOLO", roboflow: "Roboflow", frame: "Frame-based", you: "You" };
 
   // The SNN's screen follows "Reacts to": Darker = the original black dot on white (a new dot makes it darker),
-  // Brighter or Any = a gold dot on a dark screen. YOLO and Roboflow always get black on white.
+  // Brighter or Any = a gold dot on a dark screen. YOLO always gets black on white.
   const SCREENS = { dark: { background: "#1e1e1e", dotColor: "#ffff55" }, light: { background: "#ffffff", dotColor: "#000000" } };
   // Marker colours: bright ones for the dark screen, darker ones so they show up on white.
   const COLORS = {
@@ -27,22 +27,36 @@
     threshold: 0.5,
     decay: 0.8,
     polarity: { game: "brighter", webcam: "any" },   // gold dot on dark = the screen gets BRIGHTER
-    conf: { yolo: 0.05, roboflow: 0.25 },            // the store-bought YOLO is unsure about a plain dot, so it needs a low bar
+    conf: { yolo: 0.05 },                            // the store-bought YOLO is unsure about a plain dot, so it needs a low bar
     player: "ai",
     noise: 0,
     mirror: true,
     cameraId: "",
-    boardBrain: "snn",     // Board mode: "snn" or "frame"
+    boardBrain: "snn",     // Board mode: "snn", "frame", "yolo" (your board model, in the browser) or "roboflow" (on Roboflow)
     boardInput: "sim",     // Board mode: "sim" (pretend board) or "camera" (the real one)
     useArm: true,
     holes: null,           // where the 9 holes are in the camera picture (null = the defaults)
+    boxSize: 80,           // how big the square around each hole is, in camera pixels
+    theme: "minecraft",    // how the page looks: see THEMES
   };
   try { Object.assign(settings, JSON.parse(localStorage.getItem("snn-camera") || "{}")); } catch { /* fine, use defaults */ }
+  if (!["snn", "yolo"].includes(settings.brain)) settings.brain = "snn";   // Roboflow is Board-mode only now
   const save = () => { try { localStorage.setItem("snn-camera", JSON.stringify(settings)); } catch { /* fine */ } };
 
   // ---------- Page bits ----------
   const $ = (s) => document.querySelector(s);
   const $$ = (s) => [...document.querySelectorAll(s)];
+
+  // The page's look. Pick it in the menu (or press T for the next one). Only the page changes, not the game screen.
+  const THEMES = { minecraft: "Minecraft", light: "Light", dark: "Dark", nuvu: "NuVu" };
+  function setTheme(name) {
+    settings.theme = THEMES[name] ? name : "minecraft";
+    document.body.dataset.theme = settings.theme;
+    document.body.classList.toggle("flat", settings.theme !== "minecraft");   // every theme but Minecraft shares the flat look
+    $("#theme-select").value = settings.theme;
+    save();
+  }
+  const nextTheme = () => { const names = Object.keys(THEMES); setTheme(names[(names.indexOf(settings.theme) + 1) % names.length]); };
   const gameCanvas = $("#game-canvas"), viewCanvas = $("#view-canvas"), video = $("#video");
   const gameCtx = gameCanvas.getContext("2d"), viewCtx = viewCanvas.getContext("2d");
   const setText = (sel, text) => { if ($(sel).textContent !== text) $(sel).textContent = text; };
@@ -99,11 +113,13 @@
   }
 
   // ---------- YOLO and Roboflow (the "detector" brains) ----------
-  const detectors = { yolo: new YOLO.Detector(), roboflow: new Roboflow.RoboflowClient() };
+  const detectors = {
+    yolo: new YOLO.Detector(), roboflow: new Roboflow.RoboflowClient(),
+    board: new YOLO.Detector({ model: "models/board.onnx", names: YOLO.BOARD_NAMES }),   // Board mode's YOLO
+  };
   const detector = () => detectors[settings.brain];
   const detectorPic = Object.assign(document.createElement("canvas"), { width: W, height: H });   // the picture it last looked at
   let boxes = [], detectorError = "", round = 0, detectorDone = [];
-  const roboflowOff = () => settings.brain === "roboflow" && mode === "webcam";   // it only knows dots, so no webcam
 
   function loadDetector() {
     const brain = settings.brain;
@@ -117,7 +133,7 @@
   // Ask the detector about the current picture (skipped if it's still busy with the last one).
   function runDetector(onBoxes) {
     const d = detector(), brain = settings.brain, myRound = round;
-    if (!d.ready || d.busy || roboflowOff()) return;
+    if (!d.ready || d.busy) return;
     d.busy = true;
     const pic = frameCtx.getImageData(0, 0, W, H);
     d.detect(pic.data, W, H, settings.conf[brain]).then((found) => {
@@ -272,8 +288,9 @@
 
   // Turn the board picture into the 3 x 3 black-and-white grid, and let the brain look at it.
   function boardLook(t) {
-    const bw = vision.look(frame, holes());
+    const bw = vision.look(frame, holes(), settings.boxSize);
     let guess;
+    if (boardModel()) return askBoardModel();   // it answers a bit later, once the model is done
     if (settings.boardBrain === "snn") {
       const p = runSNN(t, bw, Board.GRID, Board.GRID);
       guess = p ? Board.squareOf(p.x, p.y) : null;
@@ -282,6 +299,34 @@
     }
     if (guess !== null) boardGuess = { hole: guess, at: t };
     match?.saw(guess);
+  }
+
+  // The board model brains (YOLO in the browser, or Roboflow): show them the right-hand view, drawn exactly like
+  // the pictures they were trained on (1074 x 810, grid lines, numbers), and they say which hole. One picture at a time.
+  const boardPic = Object.assign(document.createElement("canvas"), { width: 1074, height: 810 });
+  const BOARD_CONF = 0.4;   // how sure the board model has to be
+  const boardModel = () => ({ yolo: detectors.board, roboflow: detectors.roboflow })[settings.boardBrain];
+
+  function askBoardModel() {
+    const brain = settings.boardBrain, d = boardModel();
+    if (!d.ready) {
+      if (!d.loading && !detectorError) d.load().then(refresh).catch((err) => { detectorError = err.message; refresh(); });
+      return;
+    }
+    if (d.busy) return;
+    d.busy = true;
+    drawBoardView(now(), boardPic);
+    const answer = brain === "roboflow" ? d.detectBoard(boardPic, BOARD_CONF)
+      : d.detect(boardPic.getContext("2d").getImageData(0, 0, boardPic.width, boardPic.height).data, boardPic.width, boardPic.height, BOARD_CONF)
+        .then((found) => found[0]?.cls ?? null);   // class 3 = hole3 = hole 3
+    answer.then((hole) => {
+      if (mode !== "board" || settings.boardBrain !== brain) return;   // switched away while it was thinking
+      detectorError = "";
+      detectorDone.push(now());
+      if (hole !== null) boardGuess = { hole, at: now() };
+      match?.saw(hole);
+    }).catch((err) => { detectorError = err.message; refresh(); })
+      .finally(() => (d.busy = false));
   }
 
   // With the simulator, draw the pretend board 30 times a second (like a camera would).
@@ -320,6 +365,7 @@
       return refresh();
     }
     const who = settings.player === "you" ? "you" : settings.boardBrain;
+    if (who !== "you" && boardModel() && !boardModel().ready) return status(detectorError || `${NAME[who]} is still loading. Give it a second.`);
     if (!usingSim()) {
       if (!links.board.connected) return status("Connect the board Arduino first (or switch to Simulator).");
       if (who === "you") return status("You play is in the Simulator: click the lit hole.");
@@ -362,7 +408,7 @@
   }
 
   // Which hole's box is under this point (or -1).
-  const boxAt = (x, y) => holes().findIndex(([hx, hy]) => Math.abs(hx - x) <= Board.BOX / 2 && Math.abs(hy - y) <= Board.BOX / 2);
+  const boxAt = (x, y) => holes().findIndex(([hx, hy]) => Math.abs(hx - x) <= settings.boxSize / 2 && Math.abs(hy - y) <= settings.boxSize / 2);
 
   let dragging = null;   // {hole, dx, dy} while a box is being dragged
 
@@ -393,7 +439,7 @@
       gameCanvas.style.cursor = !newHoles && !(usingSim() && match && settings.player === "you") && boxAt(x, y) >= 0 ? "grab" : "";
       return;
     }
-    const half = Board.BOX / 2;
+    const half = settings.boxSize / 2;
     settings.holes[dragging.hole] = [
       Math.round(Math.min(W - half, Math.max(half, x + dragging.dx))),
       Math.round(Math.min(H - half, Math.max(half, y + dragging.dy))),
@@ -472,7 +518,7 @@
       return boardLook(now());
     }
     if (mode !== "webcam") return;
-    if (settings.brain !== "snn" && (!detector().ready || detector().busy || roboflowOff())) return;
+    if (settings.brain !== "snn" && (!detector().ready || detector().busy)) return;
 
     // Crop the webcam to 4:3, flip it like a mirror if asked, squeeze it into 640 x 480.
     const vw = video.videoWidth, vh = video.videoHeight;
@@ -517,16 +563,22 @@
   }
 
   function setBrain(next) {
-    if (mode === "board") {   // the board only has the SNN and the frame-based brain
-      if (!["snn", "frame"].includes(next) || next === settings.boardBrain) return;
+    if (mode === "board") {   // the board has the SNN, the frame-based brain and your Roboflow board model
+      if (!["snn", "frame", "yolo", "roboflow"].includes(next) || next === settings.boardBrain) return;
       match?.stop();
       settings.boardBrain = next;
+      detectorError = "";
       save();
       resetBrain();
-      status(next === "snn" ? "The SNN only reacts to a light turning on." : "Frame-based checks all 9 squares, every frame, lit or not.");
+      status({
+        snn: "The SNN only reacts to a light turning on.",
+        frame: "Frame-based checks all 9 squares, every frame, lit or not.",
+        yolo: "Your trained board model, running in this browser. It looks at the whole 3 x 3 view, every frame.",
+        roboflow: "Your trained board model on Roboflow. Every frame goes out and back.",
+      }[next]);
       return refresh();
     }
-    if (next === "frame" || next === settings.brain) return;
+    if (!["snn", "yolo"].includes(next) || next === settings.brain) return;   // Frame-based and Roboflow are Board-only
     settings.brain = next;
     save();
     resetBrain();
@@ -534,7 +586,6 @@
     status({
       snn: "The SNN only reacts to what changes.",
       yolo: "YOLO looks at the whole picture every frame, changed or not.",
-      roboflow: "Your trained dot model, on Roboflow. Every frame goes to the internet and back.",
     }[next]);
     refresh();
   }
@@ -565,7 +616,7 @@
     press(".tab", "mode", mode);
     press("#brain-switch button", "brain", brain);
     press("#board-input button", "input", settings.boardInput);
-    $$("#brain-switch button").forEach((b) => (b.hidden = isBoard ? !["snn", "frame"].includes(b.dataset.brain) : b.dataset.brain === "frame"));
+    $$("#brain-switch button").forEach((b) => (b.hidden = !isBoard && ["frame", "roboflow"].includes(b.dataset.brain)));
     press("#player-switch button", "player", settings.player);
     press("#polarity-switch button", "polarity", settings.polarity[mode]);
 
@@ -579,8 +630,7 @@
     $$(".detector-only").forEach((c) => (c.hidden = isSnn || isBoard));
     $$(".board-only").forEach((c) => (c.hidden = !isBoard));
     $("#polarity-switch").parentElement.hidden = !isSnn || isBoard;   // the board always uses "brighter"
-    for (const row of ["yolo", "roboflow"]) $(`#${row}-col`).parentElement.hidden = isBoard;
-    $("#frame-col").parentElement.hidden = !isBoard;
+    for (const row of ["frame", "roboflow"]) $(`#${row}-col`).parentElement.hidden = !isBoard;
     for (const name of ["board", "arm"]) $(`#connect-${name}`).setAttribute("aria-pressed", String(links[name].connected));
     $("#use-arm").checked = settings.useArm;
     setText("#board-start", !match ? "Start" : match.running ? "Stop" : "Stopping...");
@@ -593,8 +643,8 @@
     $("#camera-retry").hidden = cameraState === "starting";
 
     // Message over the brain's view
-    if (isSnn || isBoard) message("");
-    else if (roboflowOff()) message("The Roboflow model only knows Click the Dot. Use SNN or YOLO for the webcam.");
+    if (isBoard && boardModel()) message(detectorError || (boardModel().ready ? "" : `Loading ${NAME[brain]}...`));
+    else if (isSnn || isBoard) message("");
     else message(detectorError || (detector().ready ? "" : `Loading ${NAME[settings.brain]}...`));
 
     setText("#input-title", isGame ? "Click the Dot" : isBoard ? "Wack-a-Fly board" : "Webcam");
@@ -604,6 +654,8 @@
     if (isBoard && !isSnn) setText("#detector-info", "every square, every frame");
 
     // Knob values
+    $("#box-size").value = settings.boxSize;
+    setText("#box-size-out", `${settings.boxSize} px`);
     $("#threshold").value = settings.threshold;
     setText("#threshold-out", settings.threshold.toFixed(2));
     $("#decay").value = settings.decay;
@@ -652,17 +704,18 @@
       const color = res?.guess === i ? (res.hit ? "#55ff55" : "#ff5555") : match?.lit === i ? "#ffff55" : "rgba(255,255,255,.35)";
       ctx.lineWidth = color.startsWith("rgba") ? 2 : 4;
       ctx.strokeStyle = color;
-      ctx.strokeRect(x - Board.BOX / 2, y - Board.BOX / 2, Board.BOX, Board.BOX);
+      const half = settings.boxSize / 2;
+      ctx.strokeRect(x - half, y - half, settings.boxSize, settings.boxSize);
       ctx.fillStyle = color;
-      ctx.fillText(String(i), x - Board.BOX / 2 + 4, y - Board.BOX / 2 + 14);
+      ctx.fillText(String(i), x - half + 4, y - half + 14);
     });
     (newHoles || []).forEach(([x, y]) => { ctx.fillStyle = "#ff55ff"; ctx.fillRect(x - 4, y - 4, 8, 8); });
     ctx.setTransform(1, 0, 0, 1, 0, 0);
   }
 
   // Board mode, right side: the 3 x 3 black-and-white squares (with the SNN's neurons on top for the SNN).
-  function drawBoardView(t) {
-    const c = viewCanvas, ctx = viewCtx, side = Math.min(c.width, c.height), x0 = (c.width - side) / 2;
+  function drawBoardView(t, c = viewCanvas) {
+    const ctx = c.getContext("2d"), side = Math.min(c.width, c.height), x0 = (c.width - side) / 2;
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, c.width, c.height);
     ctx.imageSmoothingEnabled = false;
@@ -778,16 +831,20 @@
     const d = mode === "board" ? null : detector();
     let state;
     if (wantsCamera() && cameraState !== "on") state = "No input";
+    else if (mode === "board" && boardModel()) {
+      const bm = boardModel(), where = settings.boardBrain === "yolo" ? "in this browser" : `on ${bm.where}`;
+      state = detectorError ? "Error" : !bm.ready ? "Loading" : boardGuess && t - boardGuess.at < 500 ? "Sees a light" : "Nothing";
+      detectorDone = detectorDone.filter((x) => x > t - 1000);
+      if (bm.ready) setText("#detector-info", `your board model, ${where} · ${Math.round(bm.lastMs)} ms a frame · ${detectorDone.length} fps`);
+    }
     else if (mode === "board" && settings.boardBrain === "frame") state = boardGuess && t - boardGuess.at < 250 ? "Sees a light" : "Nothing";
-    else if (roboflowOff()) state = "Off";
     else if (d) state = !d.ready ? (detectorError ? "Error" : "Loading") : boxes.length ? `Found ${boxes.length}` : "Nothing";
     else state = t - lastFire < 250 ? "Firing" : snn.active ? "Seeing change" : "Quiet";
     setText("#network-chip", state);
     $("#network-chip").className = `badge ${state === "Firing" || state.startsWith("Found") ? "firing" : state === "Seeing change" ? "seeing" : ""}`;
     if (d?.ready) {
       detectorDone = detectorDone.filter((x) => x > t - 1000);
-      const what = settings.brain === "yolo" ? "every pixel, every frame" : "trained on the dot, runs on Roboflow";
-      setText("#detector-info", `${what} · ${Math.round(d.lastMs)} ms a frame · ${detectorDone.length} fps`);
+      setText("#detector-info", `every pixel, every frame · ${Math.round(d.lastMs)} ms a frame · ${detectorDone.length} fps`);
     }
   }
 
@@ -812,6 +869,9 @@
   $$(".tab").forEach((b) => b.addEventListener("click", () => setMode(b.dataset.mode)));
   onClick("#brain-switch", (d) => setBrain(d.brain));
   $("#pause-button").addEventListener("click", () => setPaused(!userPaused));
+  const toggleHelp = () => ($("#help").open ? $("#help").close() : $("#help").showModal());
+  $("#help-button").addEventListener("click", toggleHelp);
+  $("#theme-select").addEventListener("change", (e) => { setTheme(e.target.value); e.target.blur(); });   // let go, so the keys work again
   $("#auto-switch").addEventListener("change", () => (autoSwitchAt = now() + AUTO_SWITCH));
   onClick("#player-switch", (d) => change(() => { settings.player = d.player; freshDot(); }));
   onClick("#polarity-switch", (d) => change(() => {
@@ -823,6 +883,7 @@
   $("#decay").addEventListener("input", (e) => change(() => snn.configure({ decay: (settings.decay = +e.target.value) })));
   $("#grid-select").addEventListener("change", (e) => change(() => { setGrid(e.target.value); resetBrain(); }));
   $("#conf").addEventListener("input", (e) => change(() => (settings.conf[settings.brain] = +e.target.value)));
+  $("#box-size").addEventListener("input", (e) => change(() => { settings.boxSize = +e.target.value; resetBrain(); }));   // the SNN would see the boxes change as movement
   $("#noise").addEventListener("input", (e) => change(() => (game.noise = settings.noise = +e.target.value)));
   $("#reset-neurons").addEventListener("click", resetBrain);
   $("#neuron-defaults").addEventListener("click", () => change(() => {
@@ -859,7 +920,7 @@
   document.addEventListener("keydown", (e) => {
     if (e.metaKey || e.ctrlKey || e.altKey || e.repeat || e.target.tagName === "SELECT") return;
     const keys = { 1: () => setMode("game"), 2: () => setMode("webcam"), 3: () => setMode("board"), s: () => setBrain("snn"), y: () => setBrain("yolo"), f: () => setBrain("frame"),
-      b: () => setBrain("roboflow"), r: resetBrain, p: () => setPaused(!userPaused), " ": () => setPaused(!userPaused) };
+      b: () => setBrain("roboflow"), t: nextTheme, h: toggleHelp, r: resetBrain, p: () => setPaused(!userPaused), " ": () => setPaused(!userPaused) };
     const fn = keys[e.key.toLowerCase()];
     if (!fn || (e.key === " " && ["BUTTON", "INPUT"].includes(e.target.tagName) && e.target.type !== "range")) return;
     e.preventDefault();
@@ -873,6 +934,7 @@
   watcher.observe(viewCanvas);
 
   // ---------- Go! ----------
+  setTheme(settings.theme);
   snn.configure({ polarity: settings.polarity.game });
   game.noise = settings.noise;
   setGrid(settings.grid);
