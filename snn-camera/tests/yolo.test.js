@@ -1,7 +1,7 @@
 // Checks the YOLO box-reading code. Run:  node --test tests/*.test.js
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { preprocess, decode, NAMES } = require("../js/yolo.js");
+const { preprocess, decode, NAMES, BOARD_NAMES } = require("../js/yolo.js");
 
 test("80 COCO class names, dot class is sports ball", () => {
   assert.equal(NAMES.length, 80);
@@ -30,4 +30,13 @@ test("decode turns model output into boxes, keeps the best, drops overlaps", () 
   assert.equal(boxes.length, 1);
   assert.equal(boxes[0].name, "sports ball");
   assert.deepEqual([boxes[0].x1, boxes[0].y1, boxes[0].x2, boxes[0].y2], [370, 170, 430, 230]);
+});
+
+test("the board model: 9 classes, hole0 ... hole8, and decode reads them", () => {
+  assert.deepEqual(BOARD_NAMES, ["hole0", "hole1", "hole2", "hole3", "hole4", "hole5", "hole6", "hole7", "hole8"]);
+  const N = 1, out = new Float32Array((4 + 9) * N);
+  out[0] = 320; out[1] = 320; out[2] = 50; out[3] = 50; out[(4 + 7) * N] = 0.9;   // a light in hole 7
+  const boxes = decode(out, N, { scale: 1, padX: 0, padY: 0, w: 640, h: 640 }, 0.25, BOARD_NAMES);
+  assert.equal(boxes[0].name, "hole7");
+  assert.equal(boxes[0].cls, 7);
 });

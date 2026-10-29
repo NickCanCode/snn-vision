@@ -3,9 +3,14 @@
 #   2. It talks to Roboflow for the app, so your secret Roboflow key never goes to the browser.
 # Your key lives in the .env file next to this one:  ROBOFLOW_API_KEY=...
 # Want to run Roboflow on your own computer instead of the internet? Add  ROBOFLOW_API_URL=http://localhost:9001
+# Which board model Board mode uses (project/version on Roboflow):  ROBOFLOW_BOARD_MODEL=yerrrrrrrrrr/1
+# Run the board model on THIS Mac (no internet, no Docker) with Roboflow's Python package:  ROBOFLOW_LOCAL=1
+#   That package lives in its own venv, snn-camera/.venv (the launcher uses it when it's there):
+#   python3.12 -m venv .venv && .venv/bin/pip install inference
 import json
 import os
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -13,7 +18,6 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-WORKFLOW = "nickcancode-s-workspace/workflows/clickthedot-vclickthedot-1-rfdetr-nas-t1-9602f1-logic"
 
 
 class RoboflowError(Exception):
@@ -36,6 +40,20 @@ def api_key():
     return os.environ.get("ROBOFLOW_API_KEY", "")
 
 
+def self_hosted():
+    """The Roboflow server you run yourself (like http://localhost:9001), or "" for Roboflow's cloud."""
+    return os.environ.get("ROBOFLOW_API_URL", "").rstrip("/")
+
+
+def board_model():
+    return os.environ.get("ROBOFLOW_BOARD_MODEL", "yerrrrrrrrrr/1")
+
+
+def run_here():
+    """ROBOFLOW_LOCAL=1: run the board model on this Mac with Roboflow's Python package."""
+    return os.environ.get("ROBOFLOW_LOCAL", "") == "1"
+
+
 def find_boxes(thing):
     """Roboflow's answer is a big nested blob. Dig through it for the list of boxes."""
     if isinstance(thing, list):
@@ -53,30 +71,68 @@ def find_boxes(thing):
     return None
 
 
-def run_workflow(image_b64):
-    """Send one picture (base64) to the Click the Dot model. Gives back boxes, most sure first."""
+def ask_roboflow(url, body, headers):
+    """Send one request to Roboflow (cloud or your own server). Gives back boxes, most sure first."""
     if not api_key():
         raise RoboflowError("No Roboflow key. Put ROBOFLOW_API_KEY=... in snn-camera/.env", 503)
-    url = os.environ.get("ROBOFLOW_API_URL", "https://serverless.roboflow.com").rstrip("/") + "/" + WORKFLOW
-    body = json.dumps({"inputs": {"image": {"type": "base64", "value": image_b64}}}).encode()
-    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {api_key()}"}
-
     for attempt in range(3):   # try up to 3 times, waiting a bit longer each time
         try:
-            with urllib.request.urlopen(urllib.request.Request(url, body, headers), timeout=15) as res:
+            # 30 s: the first time, your own server has to download the model before it can answer
+            with urllib.request.urlopen(urllib.request.Request(url, body, headers), timeout=30) as res:
                 answer = json.load(res)
             break
         except urllib.error.HTTPError as err:
             if err.code < 500 or attempt == 2:   # a bad key won't fix itself, so don't retry that
-                raise RoboflowError(f"Roboflow said {err.code}", 401 if err.code in (401, 403) else 502) from None
+                hint = " (no model there: is it trained? check ROBOFLOW_BOARD_MODEL)" if err.code == 404 else ""
+                raise RoboflowError(f"Roboflow said {err.code}{hint}", 401 if err.code in (401, 403) else 502) from None
         except OSError as err:   # no internet, timed out, ...
             if attempt == 2:
-                raise RoboflowError(f"Can't reach Roboflow: {err}") from None
+                where = f"your Roboflow server at {self_hosted()} (is it running?)" if self_hosted() else "Roboflow"
+                raise RoboflowError(f"Can't reach {where}: {err}") from None
         time.sleep(0.5 * 2 ** attempt)
 
     boxes = find_boxes(answer.get("outputs", answer)) or []
     boxes = [{k: b.get(k) for k in ("x", "y", "width", "height", "confidence", "class")} for b in boxes]
     return sorted(boxes, key=lambda b: b["confidence"] or 0, reverse=True)
+
+
+local_model = None            # the board model, once it's loaded on this Mac
+local_lock = threading.Lock()  # one picture at a time
+
+
+def run_board_model_here(image_b64):
+    """Run the board model on this Mac. The first time, Roboflow's package downloads it (needs internet once)."""
+    global local_model
+    # Use the plain CPU: the Mac's CoreML speed-up crashes on YOLO26 models (like yerrrrrrrrrr). Must be set before the import.
+    os.environ.setdefault("ONNXRUNTIME_EXECUTION_PROVIDERS", "[CPUExecutionProvider]")
+    try:
+        import base64
+        import cv2
+        import numpy as np
+        from inference import get_model
+    except ImportError:
+        raise RoboflowError("ROBOFLOW_LOCAL=1, but Roboflow's package isn't installed. "
+                            "In snn-camera: python3.12 -m venv .venv && .venv/bin/pip install inference", 503) from None
+    if not api_key():
+        raise RoboflowError("No Roboflow key. Put ROBOFLOW_API_KEY=... in snn-camera/.env", 503)
+    picture = cv2.imdecode(np.frombuffer(base64.b64decode(image_b64), np.uint8), cv2.IMREAD_COLOR)
+    if picture is None:
+        raise RoboflowError("That picture didn't open", 400)
+    with local_lock:
+        if local_model is None:
+            local_model = get_model(board_model(), api_key=api_key())
+        answer = local_model.infer(picture, confidence=0.1)[0]
+    boxes = [{"x": p.x, "y": p.y, "width": p.width, "height": p.height, "confidence": p.confidence, "class": p.class_name}
+             for p in answer.predictions]
+    return sorted(boxes, key=lambda b: b["confidence"], reverse=True)
+
+
+def run_board_model(image_b64):
+    """Send one picture of the 3 x 3 board view (base64) to the board model. Its classes are hole0 ... hole8."""
+    if run_here():
+        return run_board_model_here(image_b64)
+    url = f"{self_hosted() or 'https://detect.roboflow.com'}/{board_model()}?api_key={api_key()}"
+    return ask_roboflow(url, image_b64.encode(), {"Content-Type": "application/x-www-form-urlencoded"})
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -106,7 +162,8 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/api/roboflow/status":
-            return self.reply(200, {"configured": bool(api_key())})
+            return self.reply(200, {"configured": bool(api_key()), "selfHosted": "this Mac" if run_here() else self_hosted(),
+                                    "boardModel": board_model()})
         if self.secret():
             return self.send_error(404)
         super().do_GET()
@@ -117,7 +174,7 @@ class Handler(SimpleHTTPRequestHandler):
         super().do_HEAD()
 
     def do_POST(self):
-        if self.path != "/api/roboflow":
+        if self.path != "/api/roboflow/board":
             return self.send_error(404)
         try:
             length = int(self.headers.get("Content-Length", 0))
@@ -125,7 +182,7 @@ class Handler(SimpleHTTPRequestHandler):
                 raise RoboflowError("Picture missing or too big", 413)
             image = json.loads(self.rfile.read(length)).get("image", "")
             started = time.perf_counter()
-            boxes = run_workflow(image.split(",", 1)[-1])   # works with or without a "data:image/jpeg;base64," front
+            boxes = run_board_model(image.split(",", 1)[-1])   # works with or without a "data:image/jpeg;base64," front
             self.reply(200, {"boxes": boxes, "ms": round((time.perf_counter() - started) * 1000)})
         except RoboflowError as err:
             self.reply(err.status, {"error": str(err)})
@@ -136,7 +193,8 @@ class Handler(SimpleHTTPRequestHandler):
 if __name__ == "__main__":
     load_env()
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8765
-    print(f"SNN Camera server on http://127.0.0.1:{port}  (Roboflow key: {'yes' if api_key() else 'no'})")
+    print(f"SNN Camera server on http://127.0.0.1:{port}  (Roboflow key: {'yes' if api_key() else 'no'}, "
+          f"Roboflow at: {'this Mac' if run_here() else self_hosted() or 'the cloud'}, board model: {board_model()})")
     try:
         ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()
     except KeyboardInterrupt:

@@ -14,7 +14,7 @@
     [110, 240], [320, 240], [530, 240],
     [110, 360], [320, 360], [530, 360],
   ];
-  const BOX = 80;            // size of the square cut out around each hole
+  const BOX = 80;            // size of the square cut out around each hole (the app's "Box size" slider can change it)
   const SIZE = 192;          // each square gets zoomed up to 192 x 192 (like camera.py)
   const GRID = SIZE * 3;     // so the glued 3 x 3 picture is 576 x 576
   const WHITE = 180;         // brighter than this = white, the rest = black (like camera.py)
@@ -46,11 +46,11 @@
       this.bw = new Float32Array(GRID * GRID);
     }
 
-    look(frame, holes) {
+    look(frame, holes, box = BOX) {
       const ctx = this.ctx;
       ctx.filter = "grayscale(1) blur(2px)";   // gray, and a little blur so specks don't count
       holes.forEach(([x, y], i) => {
-        ctx.drawImage(frame, x - BOX / 2, y - BOX / 2, BOX, BOX, (i % 3) * SIZE, Math.floor(i / 3) * SIZE, SIZE, SIZE);
+        ctx.drawImage(frame, x - box / 2, y - box / 2, box, box, (i % 3) * SIZE, Math.floor(i / 3) * SIZE, SIZE, SIZE);
       });
       ctx.filter = "none";
       const img = ctx.getImageData(0, 0, GRID, GRID);

@@ -1,6 +1,8 @@
-// YOLO brain: the yolo11n model from yoloAimPrototype1, running right in the browser.
-// Unlike the SNN, it looks at EVERY pixel of EVERY frame, even if nothing changed.
-// It's the normal store-bought model, so it knows 80 everyday things. It calls the dot a "sports ball".
+// YOLO brain: a YOLO model running right in the browser. Unlike the SNN, it looks at EVERY pixel of EVERY frame.
+//   Click the Dot + webcam: the store-bought yolo11n from yoloAimPrototype1. It knows 80 everyday things
+//     and calls the dot a "sports ball".
+//   Board mode: models/board.onnx, trained on the 3 x 3 board view (dataset/make_samples.py). Its classes are
+//     hole0 ... hole8, so what it finds = the hole to hit.
 (function () {
   "use strict";
 
@@ -16,6 +18,8 @@
     "microwave", "oven", "toaster", "sink", "refrigerator", "book", "clock", "vase", "scissors", "teddy bear",
     "hair drier", "toothbrush",
   ];
+
+  const BOARD_NAMES = Array.from({ length: 9 }, (_, i) => `hole${i}`);
 
   // Our 640 x 480 picture -> a 640 x 640 square with grey bars on top and bottom (like a movie on a TV).
   function preprocess(rgba, w, h) {
@@ -44,11 +48,11 @@
   }
 
   // YOLO's raw answer is 8400 guesses. Keep the sure ones, drop doubles, give back boxes in our picture.
-  function decode(out, guesses, { scale, padX, padY, w, h }, conf = 0.25) {
+  function decode(out, guesses, { scale, padX, padY, w, h }, conf = 0.25, names = NAMES) {
     const found = [];
     for (let i = 0; i < guesses; i++) {
       let best = 0, cls = -1;
-      for (let c = 0; c < 80; c++) {   // which of the 80 things is it most sure about?
+      for (let c = 0; c < names.length; c++) {   // which thing is it most sure about?
         const s = out[(4 + c) * guesses + i];
         if (s > best) { best = s; cls = c; }
       }
@@ -57,7 +61,7 @@
       found.push({
         x1: Math.max(0, (cx - bw / 2 - padX) / scale), y1: Math.max(0, (cy - bh / 2 - padY) / scale),
         x2: Math.min(w, (cx + bw / 2 - padX) / scale), y2: Math.min(h, (cy + bh / 2 - padY) / scale),
-        score: best, cls, name: NAMES[cls],
+        score: best, cls, name: names[cls],
       });
     }
     found.sort((a, b) => b.score - a.score);
@@ -70,7 +74,9 @@
   }
 
   class Detector {
-    constructor() {
+    constructor({ model = "models/yolo11n.onnx", names = NAMES } = {}) {
+      this.model = model;
+      this.names = names;
       this.session = null;
       this.loading = null;
       this.busy = false;
@@ -92,7 +98,8 @@
         }
         window.ort.env.wasm.wasmPaths = new URL("vendor/onnxruntime-web/", location.href).href;
         window.ort.env.wasm.numThreads = 1;
-        this.session = await window.ort.InferenceSession.create("models/yolo11n.onnx", { executionProviders: ["wasm"] });
+        this.session = await window.ort.InferenceSession.create(this.model, { executionProviders: ["wasm"] })
+          .catch(() => { throw new Error(`Couldn't load ${this.model}. Is it there?`); });
       })().catch((err) => { this.loading = null; throw err; });
       return this.loading;
     }
@@ -105,11 +112,11 @@
       const result = await this.session.run({ [this.session.inputNames[0]]: input });
       const out = result[this.session.outputNames[0]];
       this.lastMs = performance.now() - start;
-      return decode(out.data, out.dims[2], { ...pre, w, h }, conf);
+      return decode(out.data, out.dims[2], { ...pre, w, h }, conf, this.names);
     }
   }
 
-  const api = { Detector, preprocess, decode, NAMES };
+  const api = { Detector, preprocess, decode, NAMES, BOARD_NAMES };
   if (typeof module === "object") module.exports = api;   // so the tests can use it
   else window.YOLO = api;
 })();

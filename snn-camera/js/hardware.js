@@ -1,21 +1,14 @@
 // Talks to the 2 Arduinos over USB, right from Chrome (no Python needed).
 //   Board Arduino  (arduino/board/board.ino): lights the LEDs. There's a magnet inside each hole.
-//   Arm Arduino    (arduino/arm/arm.ino): 2 servos, and a hall sensor on the tip that says "T" when it touches a magnet
+//   Arm Arduino    (arduino/arm/arm.ino): 3 servos, and a hall sensor on the tip that says "T" when it touches a magnet
 // Only works in Chrome, opened with "Start SNN Camera.command".
+// The arm's angle for each hole lives in arm.ino (the holes table), so the app just says which hole.
 (function () {
   "use strict";
 
-  // Where the arm goes for each hole: [base servo angle, arm servo angle]. Hole 0 first, hole 8 last.
-  // These are the guesses from wack-a-fly's arm.py. Tune them: change a number, reload, try that hole.
-  const PRESETS = [
-    [20, 40], [38, 40], [55, 40],
-    [72, 40], [90, 40], [108, 40],
-    [125, 40], [142, 40], [160, 40],
-  ];
-  const HOME = [90, 90];   // where the arm rests between rounds
-
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-  const armCommand = (base, arm) => `M${base},${arm}\n`;          // what arm.ino understands
+  const armCommand = (hole) => `H${hole}\n`;                       // arm.ino: lift, swing over the hole, tap it, lift
+  const REST = "Z\n";                                              // arm.ino: go to rest between rounds
   const isTouch = (line) => line.trim() === "T";                   // the arm's tip just touched a magnet
 
   // One USB connection to one Arduino.
@@ -90,13 +83,13 @@
 
   class RealArm {
     constructor(link) { this.link = link; }
-    async move([base, arm]) {
-      const there = this.link.waitFor("OK", 10000);   // arm.ino says "OK" once it's there
-      await this.link.write(armCommand(base, arm));
+    async send(command) {
+      const there = this.link.waitFor("OK", 10000);   // arm.ino says "OK" once it's done
+      await this.link.write(command);
       await there;
     }
-    goTo(hole) { return this.move(PRESETS[hole]); }
-    home() { return this.move(HOME); }
+    goTo(hole) { return this.send(armCommand(hole)); }   // the tip's "T" arrives during this, before the "OK"
+    home() { return this.send(REST); }
   }
 
   // Pretend versions for the simulator.
@@ -112,7 +105,7 @@
     async home() { this.at = null; await sleep(400); }
   }
 
-  const api = { PRESETS, HOME, armCommand, isTouch, Link, RealBoard, RealArm, SimBoard, SimArm };
+  const api = { armCommand, REST, isTouch, Link, RealBoard, RealArm, SimBoard, SimArm };
   if (typeof module === "object") module.exports = api;   // so the tests can use it
   else window.Hardware = api;
 })();

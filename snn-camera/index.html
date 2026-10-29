@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- The SNN Camera page. Open it with "Start SNN Camera.command" (needed for YOLO and Roboflow). -->
+<!-- The SNN Camera page. Open it with "Start SNN Camera.command" (needed for YOLO and Roboflow). Roboflow is Board-mode only. -->
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -25,9 +25,71 @@
     </div>
     <div class="top-right">
       <label class="mc-check"><input type="checkbox" id="auto-switch"><span></span>Auto-switch <span id="auto-countdown"></span></label>
+      <select id="theme-select" class="mc-select" aria-label="Theme">
+        <option value="minecraft">Minecraft</option>
+        <option value="light">Light</option>
+        <option value="dark">Dark</option>
+        <option value="nuvu">NuVu</option>
+      </select>
+      <button class="mc-button small" id="help-button" aria-label="How the brains compare">?</button>
       <button class="mc-button small" id="pause-button">Pause</button>
     </div>
   </header>
+
+  <!-- The "?" button: how the brains compare, in every mode -->
+  <dialog class="help" id="help">
+    <h2>How the brains compare</h2>
+    <p>The <b>SNN</b> only reacts to <b>change</b>. Every other brain re-checks the <b>whole picture, every frame</b>, even when nothing moved.</p>
+    <div class="help-table">
+      <table>
+        <thead><tr><th></th><th>Click the Dot</th><th>Webcam</th><th>Board</th></tr></thead>
+        <tbody>
+          <tr><th>SNN</th><td>Fires when the dot appears</td><td>Fires only where things move</td><td>Fires when a light turns on</td></tr>
+          <tr><th>YOLO</th><td>Whole screen, every frame. Thinks the dot is a "sports ball"</td><td>Boxes everyday things, every frame</td><td>Needs a trained board model</td></tr>
+          <tr><th>Frame-based</th><td>-</td><td>-</td><td>Picks the whitest of the 9 squares, every frame</td></tr>
+          <tr><th>Roboflow</th><td>-</td><td>-</td><td>Your trained board model, on this Mac</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p><b>Avg time</b> = how long until the brain answered. <b>Avg touch</b> (Board) = how long until the arm's tip touched the magnet.</p>
+    <form method="dialog" class="help-close"><button class="mc-button small">Got it</button></form>
+  </dialog>
+
+  <!-- "Calibrate arm": steer the arm to each hole with sliders. Each hole is saved on the arm Arduino when you leave it. -->
+  <dialog class="help calibrate" id="calibrate">
+    <h2>Calibrate the arm</h2>
+    <div class="cal-top">
+      <div class="cal-map" id="cal-map"></div>
+      <div>
+        <p class="cal-hole" id="cal-hole">This is hole 0</p>
+        <p>Move the tip over this hole, then lower the lift until it says <b>Touching the magnet</b>. It's saved on the arm when you go to another hole or press Done.</p>
+        <p class="cal-state" id="cal-state"></p>
+      </div>
+    </div>
+    <label class="control">
+      <span class="label">Shoulder <b id="cal-s-out"></b></span>
+      <input type="range" id="cal-s" min="0" max="180">
+    </label>
+    <label class="control">
+      <span class="label">Elbow <b id="cal-e-out"></b></span>
+      <input type="range" id="cal-e" min="0" max="180">
+    </label>
+    <label class="control">
+      <span class="label">Lift <b id="cal-l-out"></b></span>
+      <input type="range" id="cal-l" min="0" max="180">
+    </label>
+    <label class="control">
+      <span class="label">Lift up (same for every hole) <b id="cal-up-out"></b></span>
+      <input type="range" id="cal-up" min="0" max="180">
+    </label>
+    <div class="cal-buttons">
+      <button class="mc-button small" id="cal-back">Back</button>
+      <button class="mc-button small" id="cal-raise">Raise</button>
+      <button class="mc-button small" id="cal-next">Next hole</button>
+    </div>
+    <p class="cal-saved" id="cal-saved"></p>
+    <form method="dialog" class="help-close"><button class="mc-button small">Done</button></form>
+  </dialog>
 
   <main class="stage">
     <!-- Left: the game or the webcam -->
@@ -83,7 +145,7 @@
 
   <p class="status" id="status"></p>
 
-  <!-- Knobs. The SNN ones hide when YOLO or Roboflow is picked, and the other way round. -->
+  <!-- Knobs. The SNN ones hide when another brain is picked, and the other way round. -->
   <section class="panel controls">
     <!-- Board mode only: the real Wack-a-Fly board -->
     <div class="control board-only">
@@ -104,9 +166,14 @@
       <span class="label">Arm</span>
       <label class="mc-check"><input type="checkbox" id="use-arm"><span></span>Use arm</label>
     </div>
+    <label class="control board-only">
+      <span class="label">Box size <b id="box-size-out"></b></span>
+      <input type="range" id="box-size" min="30" max="200" step="5">
+    </label>
     <div class="control board-only buttons">
       <button class="mc-button small" id="board-start">Start</button>
       <button class="mc-button small" id="set-holes">Set holes</button>
+      <button class="mc-button small" id="calibrate-arm">Calibrate arm</button>
     </div>
     <div class="control snn-only">
       <span class="label">Reacts to</span>
@@ -150,7 +217,7 @@
     </div>
   </section>
 
-  <footer class="keys">1 / 2 / 3 switch mode &nbsp; S / Y / B / F switch brain &nbsp; Space pause &nbsp; R reset</footer>
+  <footer class="keys">1 / 2 / 3 switch mode &nbsp; S / Y / B / F switch brain &nbsp; T theme &nbsp; H help &nbsp; Space pause &nbsp; R reset</footer>
 
   <script src="js/snn.js"></script>
   <script src="js/game.js"></script>

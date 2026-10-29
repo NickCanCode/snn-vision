@@ -2,7 +2,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { squareOf, frameGuess, GRID, SIZE, Match } = require("../js/board.js");
-const { armCommand, isTouch, PRESETS } = require("../js/hardware.js");
+const { armCommand, REST, isTouch } = require("../js/hardware.js");
 const { SpikingGrid } = require("../js/snn.js");
 
 // A black 3 x 3 board picture with a white dot (a lit LED) in one square.
@@ -36,8 +36,8 @@ test("SNN on the board: fires when a light turns ON in a square, not while it st
 });
 
 test("Arduino messages: arm moves and the tip touches", () => {
-  assert.equal(armCommand(55, 40), "M55,40\n");
-  assert.equal(PRESETS.length, 9);
+  assert.equal(armCommand(4), "H4\n");
+  assert.equal(REST, "Z\n");
   assert.equal(isTouch("T"), true);
   assert.equal(isTouch("T\r"), true);
   assert.equal(isTouch("OK"), false);

@@ -133,3 +133,85 @@ input[type="range"]::-moz-range-thumb { width: 14px; height: 18px; border: 0; bo
   .control.buttons { margin-left: 0; }
   .keys { display: none; }
 }
+
+/* ---------- The other themes (Light, Dark, NuVu): flat and clean ----------
+   They all share the rules below and only change these colours. Minecraft (above) is the default. */
+body[data-theme="light"] {
+  --bg: #f4f5f7; --bar: #ffffff; --panel: #ffffff; --line: #d9dce1; --text: #1f2328; --muted: #6b7280;
+  --button: #eef0f3; --button-hover: #e2e6eb; --picked: #1f2328; --picked-text: #ffffff; --accent: #2563eb;
+}
+body[data-theme="dark"] {
+  --bg: #0f1115; --bar: #161a20; --panel: #161a20; --line: #2a2f38; --text: #e6e8eb; --muted: #9aa3ae;
+  --button: #222833; --button-hover: #2c3440; --picked: #e6e8eb; --picked-text: #0f1115; --accent: #60a5fa;
+}
+body[data-theme="nuvu"] {   /* colours from the NuVu site: pink bar, dark sidebar, light grey page, white cards */
+  --bg: #f8f8f8; --bar: #e16790; --panel: #ffffff; --line: #e8e8e8; --text: #242428; --muted: #8a8a8a;
+  --button: #ffffff; --button-hover: #fbe8ee; --picked: #242428; --picked-text: #ffffff; --accent: #e16790;
+}
+body[data-theme="nuvu"].flat { font-family: Roboto, system-ui, -apple-system, sans-serif; }
+body[data-theme="nuvu"] .topbar { border-bottom: 0; }
+body[data-theme="nuvu"] .topbar h1 { color: #ffffff; font-weight: 400; letter-spacing: .08em; }   /* like "THE INNOVATION SCHOOL" */
+body[data-theme="nuvu"] .top-right { color: #ffffff; }
+body[data-theme="nuvu"] .topbar .mc-button, body[data-theme="nuvu"] .topbar .mc-select { border-color: transparent; }
+body[data-theme="nuvu"] .topbar .mc-button:not([aria-pressed="true"]), body[data-theme="nuvu"] .topbar .mc-select { background: #ea95b2; color: #ffffff; }   /* like the search box */
+body[data-theme="nuvu"] .topbar .mc-button:not([aria-pressed="true"]):hover { background: #f0aec4; }
+body[data-theme="nuvu"] .topbar .mc-check span:first-of-type { border-color: #ffffff; background: #ea95b2; }
+body[data-theme="nuvu"] .topbar .mc-check input:checked + span { background: #242428; }
+body[data-theme="nuvu"] .panel h2 { color: #e16790; font-weight: 700; }   /* pink headings, like "Projects" */
+
+.flat { background: var(--bg); color: var(--text); font: 15px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+.flat .topbar h1, .flat .mc-button, .flat .status, .flat .keys, .flat .top-right { color: var(--text); text-shadow: none; }
+.flat .paused-badge, .flat .screen-message, .flat .view-message { text-shadow: none; }
+.flat .topbar { padding: 12px 20px; background: var(--bar); border-bottom: 1px solid var(--line); }
+.flat .topbar h1 { color: var(--accent); font: 700 18px system-ui, sans-serif; letter-spacing: .06em; }
+
+.flat .mc-button { min-height: 36px; border: 1px solid var(--line); border-radius: 8px; background: var(--button); box-shadow: none; font: 600 13px system-ui, sans-serif; }
+.flat .mc-button.small { min-height: 30px; font-size: 12px; }
+.flat .mc-button:hover { background: var(--button-hover); }
+.flat .mc-button[aria-pressed="true"] { border-color: var(--picked); background: var(--picked); color: var(--picked-text); box-shadow: none; }
+.flat .mc-check span:first-of-type { width: 18px; height: 18px; border: 1px solid var(--line); border-radius: 4px; background: var(--button); }
+.flat .mc-check input:checked + span { border-color: var(--accent); background: var(--accent); }
+
+.flat .panel { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); box-shadow: none; }
+.flat .panel h2 { font: 600 15px system-ui, sans-serif; }
+.flat .badge { border-radius: 6px; background: var(--button); color: var(--text); font-size: 13px; }
+.flat .badge.seeing { color: #ef4444; }
+.flat .badge.firing { color: var(--accent); }
+.flat .screen { border: 1px solid var(--line); border-radius: 8px; }
+.flat .paused-badge { border-radius: 6px; font: 600 12px system-ui, sans-serif; }
+.flat .small-text { font-size: 14px; }
+
+.flat .score tr:first-child th, .flat #neuron-count, .flat .keys { color: var(--muted); }
+.flat .score th, .flat .score td { padding: 2px 6px; }
+.flat .sq { border: 1px solid var(--line); border-radius: 3px; }
+.flat .sq.gold { border-color: #e6b800; outline: none; }
+.flat .control b { color: var(--accent); }
+.flat .mc-select { border: 1px solid var(--line); border-radius: 6px; background: var(--button); color: var(--text); }
+.flat input[type="range"] { height: 6px; border: 0; border-radius: 3px; background: var(--line); }
+.flat input[type="range"]::-webkit-slider-thumb { width: 16px; height: 16px; border-radius: 50%; background: var(--accent); box-shadow: none; }
+.flat input[type="range"]::-moz-range-thumb { width: 16px; height: 16px; border-radius: 50%; background: var(--accent); }
+.flat .keys { font-size: 13px; }
+
+/* ---------- The "?" help window ---------- */
+.help { width: min(760px, calc(100% - 32px)); padding: 20px; border: 2px solid #000; background: #c6c6c6; box-shadow: inset 3px 3px 0 #fff, inset -3px -3px 0 #555; color: #3f3f3f; font: inherit; }
+.help::backdrop { background: rgba(0, 0, 0, .6); }
+.help h2 { margin: 0 0 10px; font: 14px "Press Start 2P", monospace; }
+.help p { margin: 8px 0; }
+.help-table { overflow-x: auto; }
+.help table { width: 100%; min-width: 520px; margin: 10px 0; border-collapse: collapse; }
+.help th, .help td { padding: 6px 8px; border-bottom: 2px solid #8b8b8b; text-align: left; vertical-align: top; }
+.help thead th { color: #555; font-weight: normal; }
+.help-close { display: flex; justify-content: flex-end; gap: 8px; margin: 12px 0 0; }
+.calibrate { width: min(560px, calc(100% - 32px)); }
+.calibrate .control { margin: 10px 0; }
+.cal-top { display: flex; gap: 16px; align-items: center; }
+.cal-map { display: grid; grid-template-columns: repeat(3, 28px); gap: 4px; flex: none; }
+.cal-map span { display: grid; place-items: center; height: 28px; border: 2px solid currentColor; font-size: 12px; opacity: .5; }
+.cal-map span.on { background: #ffe14d; color: #000; opacity: 1; }
+.cal-hole { font-size: 1.3em; font-weight: bold; }
+.cal-buttons { display: flex; gap: 8px; }
+.cal-saved { min-height: 1.3em; }
+.flat .help { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--text); box-shadow: 0 12px 40px rgba(0, 0, 0, .25); }
+.flat .help h2 { color: var(--accent); font: 700 18px system-ui, sans-serif; }
+.flat .help th, .flat .help td { border-bottom: 1px solid var(--line); }
+.flat .help thead th { color: var(--muted); }
